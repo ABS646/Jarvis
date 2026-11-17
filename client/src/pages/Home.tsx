@@ -45,7 +45,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-type LogKind = "system" | "info" | "success" | "wait" | "error";
+type LogKind = "user" | "system" | "info" | "success" | "wait" | "error";
 type View = "Command center" | "Connections" | "Approvals" | "Activity";
 type ConnectionStatus = "Connected" | "Ready";
 
@@ -205,15 +205,20 @@ export default function Home() {
     if (!trimmed || processing) return;
     setCommand("");
     setHistory(prev => [trimmed, ...prev].slice(0, 5));
-    addLog("system", `Operator command received: ${trimmed}`);
+    addLog("user", trimmed);
     setProcessing(true);
-    setLastAction("PROCESSING OPERATOR COMMAND");
+    setLastAction("J.A.R.V.I.S IS THINKING");
+    flash("J.A.R.V.I.S heard you", `Routing “${trimmed}” to the workflow planner.`);
     window.setTimeout(() => {
-      addLog("success", `Command complete. J.A.R.V.I.S has prepared the next action for review.`);
+      addLog("info", "Processing command... Routing to n8n workflow...");
+      setLastAction("ROUTING TO N8N WORKFLOW");
+    }, 360);
+    window.setTimeout(() => {
+      addLog("success", "Workflow plan ready. J.A.R.V.I.S has prepared the next action for review.");
       setProcessing(false);
       setLastAction("SYSTEM READY");
       flash("Command complete", "No external action was taken without approval.");
-    }, 780);
+    }, 1050);
   };
 
   const toggleListening = () => {
@@ -276,7 +281,7 @@ export default function Home() {
 
         <main className="main-content">
           <div className="page-header">
-            <div><div className="eyebrow accent-eyebrow"><span className="eyebrow-line" />LIVE COMMAND CENTER</div><h1>Good evening, <em>Omar.</em></h1><p>J.A.R.V.I.S is online and monitoring your active workflows.</p></div>
+            <div><div className="eyebrow accent-eyebrow"><span className="eyebrow-line" />LIVE COMMAND CENTER</div><h1>Good evening, <em>CEO.</em></h1><p>J.A.R.V.I.S is online and monitoring your active workflows.</p></div>
             <div className="header-actions"><span className="shortcut-hint"><kbd>/</kbd> Focus command</span><button className="ghost-button" onClick={() => { setLogs(initialLogs); flash("Terminal reset", "System telemetry returned to the initial snapshot."); }}><RefreshCw size={15} /> Reset sim</button></div>
           </div>
 
@@ -301,7 +306,7 @@ export default function Home() {
               </div>
               <div className="composer-wrap">
                 <div className="composer-label"><span>COMMAND INPUT</span><span><kbd>ENTER</kbd> EXECUTE</span></div>
-                <div className="command-composer"><button className={`mic-button ${listening ? "active" : ""}`} onClick={toggleListening} aria-label={listening ? "Stop listening" : "Start listening"}><Mic size={17} /></button><input ref={inputRef} value={command} onChange={event => setCommand(event.target.value)} onKeyDown={event => { if (event.key === "Enter") submitCommand(); }} placeholder="Type a command or speak..." /><button className="send-button" onClick={submitCommand} disabled={processing || !command.trim()}><Send size={16} /><span>Send</span></button></div>
+                <div className="command-composer"><input ref={inputRef} value={command} onChange={event => setCommand(event.target.value)} onKeyDown={event => { if (event.key === "Enter") submitCommand(); }} placeholder="Type a command or speak..." /><button className={`voice-mode-button ${listening ? "active" : ""}`} onClick={toggleListening} aria-pressed={listening}><Mic size={15} /><span>Voice Mode</span></button><button className="send-button" onClick={submitCommand} disabled={processing || !command.trim()}><Send size={16} /><span>Send</span></button></div>
                 <div className="composer-foot"><span><span className="tiny-green-dot" /> Secure operator channel</span><span>Press <kbd>/</kbd> anywhere to focus</span></div>
               </div>
             </section>

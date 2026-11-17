@@ -12,6 +12,7 @@
 - [x] The main center contains a large animated AI orb/voice waveform that looks like it is listening.
 - [x] The command composer says “Type a command or speak...”, includes a microphone control, and includes a Send button.
 - [x] The microphone control visibly changes the orb/listening state.
+- [x] A clearly labeled Voice Mode button sits beside the command field and activates a pulsing listening state.
 - [x] Keyboard shortcuts include `/` or `⌘/Ctrl K` to focus the command field and Enter to submit.
 
 ## Deliver the terminal and workflow simulation
@@ -20,6 +21,8 @@
 - [x] Three clickable Quick Actions are present: Start Outreach (“Scrape leads & send emails”), Generate Video (“Auto-create and post content”), and Deploy Project (“Push to GitHub & Vercel”).
 - [x] Clicking a Quick Action appends simulated terminal updates including “Executing command...”.
 - [x] Command history, metrics, system health, activity notifications, and status treatments are visible in the dashboard.
+- [x] Submitted commands appear in the System Terminal as `[USER]` messages, followed by `Processing command... Routing to n8n workflow...` and a simulated workflow response.
+- [x] The dashboard addresses the operator as “CEO” and presents a conversational interaction loop rather than only static page content.
 
 ## Deliver connected-ready controls
 
