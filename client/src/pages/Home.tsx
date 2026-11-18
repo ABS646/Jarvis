@@ -56,6 +56,21 @@ type LogEntry = {
   message: string;
 };
 
+type BrowserSpeechRecognition = {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+  onstart: (() => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
+  onresult: ((event: { results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }> }) => void) | null;
+};
+
+type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
+
 type ApprovalItem = {
   id: string;
   action: string;
@@ -139,15 +154,69 @@ export default function Home() {
   const [command, setCommand] = useState("");
   const [history, setHistory] = useState<string[]>(["Sync system health", "Review pending approvals", "Check Vercel deployment"]);
   const [listening, setListening] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [lastAction, setLastAction] = useState("SYSTEM READY");
   const [notification, setNotification] = useState<{ title: string; detail: string } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const terminalRef = useRef<HTMLDivElement>(null);
+  const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const processingRef = useRef(false);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    processingRef.current = processing;
+  }, [processing]);
+
+  useEffect(() => {
+    const browserWindow = window as Window & typeof globalThis & {
+      SpeechRecognition?: BrowserSpeechRecognitionConstructor;
+      webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
+    };
+    const Recognition = browserWindow.SpeechRecognition ?? browserWindow.webkitSpeechRecognition;
+    setVoiceSupported(Boolean(Recognition));
+    if (!Recognition) return;
+
+    const recognition = new Recognition();
+    recognition.lang = "en-US";
+    recognition.interimResults = true;
+    recognition.continuous = false;
+    recognition.onstart = () => {
+      setListening(true);
+      setLastAction("LISTENING FOR INSTRUCTION");
+      addLog("info", "Microphone armed. J.A.R.V.I.S is listening...");
+    };
+    recognition.onresult = event => {
+      let transcript = "";
+      for (let index = 0; index < event.results.length; index += 1) {
+        transcript += event.results[index][0].transcript;
+      }
+      const normalizedTranscript = transcript.trim();
+      setCommand(normalizedTranscript);
+      if (event.results[event.results.length - 1]?.isFinal && normalizedTranscript) {
+        submitText(normalizedTranscript);
+      }
+    };
+    recognition.onerror = event => {
+      setListening(false);
+      setLastAction("SYSTEM READY");
+      addLog("error", `Voice input error${event.error ? `: ${event.error}` : "."}`);
+      flash("Voice input interrupted", "Check microphone permission and try Voice Mode again.");
+    };
+    recognition.onend = () => {
+      setListening(false);
+      recognitionRef.current = null;
+      setLastAction(previous => previous === "LISTENING FOR INSTRUCTION" ? "SYSTEM READY" : previous);
+    };
+    recognitionRef.current = recognition;
+    return () => {
+      recognition.abort();
+      recognitionRef.current = null;
+    };
   }, []);
 
   useEffect(() => {
@@ -200,9 +269,9 @@ export default function Home() {
     }, 900);
   };
 
-  const submitCommand = () => {
-    const trimmed = command.trim();
-    if (!trimmed || processing) return;
+  const submitText = (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed || processingRef.current) return;
     setCommand("");
     setHistory(prev => [trimmed, ...prev].slice(0, 5));
     addLog("user", trimmed);
@@ -221,15 +290,23 @@ export default function Home() {
     }, 1050);
   };
 
+  const submitCommand = () => submitText(command);
+
   const toggleListening = () => {
-    setListening(value => !value);
-    if (!listening) {
-      setLastAction("LISTENING FOR INSTRUCTION");
-      addLog("info", "Microphone armed. Waiting for a spoken command...");
-      flash("Listening mode enabled", "Speak your instruction or type it below.");
-    } else {
-      setLastAction("SYSTEM READY");
-      addLog("system", "Microphone closed. No transcript was submitted.");
+    if (!voiceSupported) {
+      addLog("error", "Voice Mode is unavailable in this browser.");
+      flash("Voice Mode unavailable", "Use a browser with Speech Recognition support and allow microphone access.");
+      return;
+    }
+    if (listening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+    try {
+      recognitionRef.current?.start();
+      flash("Listening mode enabled", "Speak your instruction now.");
+    } catch {
+      flash("Voice Mode is already active", "Finish the current transcript before starting another one.");
     }
   };
 
@@ -306,7 +383,7 @@ export default function Home() {
               </div>
               <div className="composer-wrap">
                 <div className="composer-label"><span>COMMAND INPUT</span><span><kbd>ENTER</kbd> EXECUTE</span></div>
-                <div className="command-composer"><input ref={inputRef} value={command} onChange={event => setCommand(event.target.value)} onKeyDown={event => { if (event.key === "Enter") submitCommand(); }} placeholder="Type a command or speak..." /><button className={`voice-mode-button ${listening ? "active" : ""}`} onClick={toggleListening} aria-pressed={listening}><Mic size={15} /><span>Voice Mode</span></button><button className="send-button" onClick={submitCommand} disabled={processing || !command.trim()}><Send size={16} /><span>Send</span></button></div>
+                <div className="command-composer"><input ref={inputRef} value={command} onChange={event => setCommand(event.target.value)} onKeyDown={event => { if (event.key === "Enter") submitCommand(); }} placeholder="Type a command or speak..." /><button className={`voice-mode-button ${listening ? "active" : ""}`} onClick={toggleListening} aria-pressed={listening} title={voiceSupported ? "Start microphone input" : "Speech recognition is unavailable in this browser"}><Mic size={15} /><span>Voice Mode</span></button><button className="send-button" onClick={submitCommand} disabled={processing || !command.trim()}><Send size={16} /><span>Send</span></button></div>
                 <div className="composer-foot"><span><span className="tiny-green-dot" /> Secure operator channel</span><span>Press <kbd>/</kbd> anywhere to focus</span></div>
               </div>
             </section>

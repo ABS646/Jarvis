@@ -13,6 +13,7 @@
 - [x] The command composer says “Type a command or speak...”, includes a microphone control, and includes a Send button.
 - [x] The microphone control visibly changes the orb/listening state.
 - [x] A clearly labeled Voice Mode button sits beside the command field and activates a pulsing listening state.
+- [x] Voice Mode requests browser microphone access, transcribes speech when Speech Recognition is available, auto-submits the final transcript, and reports a fallback when unsupported.
 - [x] Keyboard shortcuts include `/` or `⌘/Ctrl K` to focus the command field and Enter to submit.
 
 ## Deliver the terminal and workflow simulation

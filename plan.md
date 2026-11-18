@@ -4,7 +4,7 @@
 
 Build a connected-ready React/Next.js-style web dashboard called J.A.R.V.I.S (Just A Rather Very Intelligent System). It is a high-tech command center for orchestrating outreach, content generation, and deployments. The first release uses realistic in-session mock data, but every connection card and workflow is shaped as an adapter boundary for future OAuth/API wiring.
 
-The assistant addresses the operator as **CEO** and behaves conversationally: typed commands are written into the System Terminal as `[USER]` entries, J.A.R.V.I.S then reports `Processing command... Routing to n8n workflow...`, and the orb exposes a dedicated Voice Mode that enters a pulsing listening state.
+The assistant addresses the operator as **CEO** and behaves conversationally: typed commands are written into the System Terminal as `[USER]` entries, J.A.R.V.I.S then reports `Processing command... Routing to n8n workflow...`, and the orb exposes a dedicated Voice Mode that enters a pulsing listening state. Voice Mode uses the browser Speech Recognition API when available, requests microphone permission, auto-submits the final transcript through the same conversational flow, and reports a clear fallback when the browser does not support speech recognition.
 
 ## Implementation approach
 
