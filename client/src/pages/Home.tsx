@@ -26,6 +26,9 @@ import {
   Mic,
   MoreHorizontal,
   Network,
+  Paperclip,
+  Phone,
+  PhoneOff,
   Play,
   Radio,
   RefreshCw,
@@ -45,6 +48,7 @@ import {
   VolumeX,
   X,
   Zap,
+  Upload,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -100,6 +104,7 @@ type Connection = {
 type ChatMessage = { role: "user" | "assistant"; content: string };
 type TaskStage = "Reasoning" | "Preparing" | "Awaiting approval" | "Approved" | "Complete";
 type TaskItem = { id: string; title: string; detail: string; stage: TaskStage; progress: number; approvalRequired: boolean };
+type LocalAttachment = { id: string; name: string; type: string; size: number; previewUrl?: string };
 
 const initialLogs: LogEntry[] = [
   { id: 1, time: "12:27:01", kind: "system", message: "Initializing lead scraper..." },
@@ -187,6 +192,9 @@ export default function Home() {
   const [profileName, setProfileName] = useState("");
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([{ role: "assistant", content: "Good evening, CEO. I am online. Tell me what you want to build, investigate, or organize, and I will break it into clear steps." }]);
   const [voiceRepliesEnabled, setVoiceRepliesEnabled] = useState(true);
+  const [voiceCallMode, setVoiceCallMode] = useState(false);
+  const [recordingVoiceNote, setRecordingVoiceNote] = useState(false);
+  const [attachments, setAttachments] = useState<LocalAttachment[]>([]);
   const [tasks, setTasks] = useState<TaskItem[]>([
     { id: "task-content", title: "Content pipeline", detail: "3 drafts are ready for operator review.", stage: "Awaiting approval", progress: 72, approvalRequired: true },
     { id: "task-outreach", title: "Riyadh outreach engine", detail: "12 leads staged; no messages will send without approval.", stage: "Preparing", progress: 54, approvalRequired: true },
@@ -195,6 +203,10 @@ export default function Home() {
   const inputRef = useRef<HTMLInputElement>(null);
   const terminalRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const voiceCallRef = useRef(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const voiceNoteChunksRef = useRef<Blob[]>([]);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
   const processingRef = useRef(false);
   const chatHistoryRef = useRef<ChatMessage[]>([{ role: "assistant", content: "Good evening, CEO. I am online. Tell me what you want to build, investigate, or organize, and I will break it into clear steps." }]);
 
@@ -302,6 +314,67 @@ export default function Home() {
     flash("Task approved", `${task.title} is cleared for preparation. External execution remains adapter-gated.`);
   };
 
+  const handleAttachmentSelection = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []).slice(0, 5);
+    const nextAttachments = files.map(file => ({ id: `${file.name}-${file.lastModified}`, name: file.name, type: file.type || "file", size: file.size, previewUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined }));
+    setAttachments(previous => [...previous, ...nextAttachments].slice(-5));
+    if (files.length) flash("Evidence staged", `${files.length} file${files.length === 1 ? "" : "s"} attached to the next command.`);
+    event.target.value = "";
+  };
+
+  const removeAttachment = (id: string) => setAttachments(previous => previous.filter(item => item.id !== id));
+
+  const toggleVoiceNote = async () => {
+    if (recordingVoiceNote) {
+      mediaRecorderRef.current?.stop();
+      return;
+    }
+    if (!("MediaRecorder" in window) || !navigator.mediaDevices?.getUserMedia) {
+      flash("Voice notes unavailable", "This browser does not expose microphone recording.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      voiceNoteChunksRef.current = [];
+      recorder.ondataavailable = event => { if (event.data.size) voiceNoteChunksRef.current.push(event.data); };
+      recorder.onstop = () => {
+        const blob = new Blob(voiceNoteChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        setAttachments(previous => [...previous, { id: `voice-${Date.now()}`, name: `voice-note-${new Date().toISOString().slice(11, 19).replaceAll(":", "-")}.webm`, type: blob.type, size: blob.size, previewUrl: URL.createObjectURL(blob) }].slice(-5));
+        stream.getTracks().forEach(track => track.stop());
+        setRecordingVoiceNote(false);
+        flash("Voice note staged", "Attach it to a command when you are ready.");
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setRecordingVoiceNote(true);
+      flash("Recording voice note", "Speak naturally, then press Voice note again to stop.");
+    } catch {
+      flash("Microphone permission required", "Allow microphone access to record a voice note.");
+    }
+  };
+
+  const toggleVoiceCall = () => {
+    if (!voiceSupported) {
+      flash("Voice call unavailable", "Use a browser with Speech Recognition support and allow microphone access.");
+      return;
+    }
+    if (voiceCallMode) {
+      voiceCallRef.current = false;
+      setVoiceCallMode(false);
+      recognitionRef.current?.stop();
+      flash("Voice call ended", "The conversation remains visible in the command channel.");
+      return;
+    }
+    voiceCallRef.current = true;
+    setVoiceCallMode(true);
+    if (recognitionRef.current) {
+      recognitionRef.current.continuous = true;
+      try { recognitionRef.current.start(); } catch { /* already listening */ }
+    }
+    flash("Voice call active", "Speak naturally. J.A.R.V.I.S will answer through the conversation channel.");
+  };
+
   const runAction = (id: string, label: string) => {
     setProcessing(true);
     setLastAction(`${label.toUpperCase()} IN PROGRESS`);
@@ -343,9 +416,11 @@ export default function Home() {
     const taskId = `task-${Date.now()}`;
     setTasks(previous => [{ id: taskId, title: trimmed.slice(0, 52), detail: "J.A.R.V.I.S is converting your instruction into an actionable plan.", stage: "Reasoning" as const, progress: 18, approvalRequired: true }, ...previous].slice(0, 6));
     addLog("user", trimmed);
-    const nextMessages: ChatMessage[] = [...chatHistoryRef.current, { role: "user" as const, content: trimmed }].slice(-24);
+    const attachmentSummary = attachments.length ? `\n\n[Evidence staged: ${attachments.map(item => `${item.name} (${item.type})`).join(", ")}]` : "";
+    const nextMessages: ChatMessage[] = [...chatHistoryRef.current, { role: "user" as const, content: `${trimmed}${attachmentSummary}` }].slice(-24);
     chatHistoryRef.current = nextMessages;
     setChatHistory(nextMessages);
+    setAttachments([]);
     processingRef.current = true;
     setProcessing(true);
     setLastAction("J.A.R.V.I.S IS THINKING");
@@ -499,7 +574,9 @@ export default function Home() {
               </div>
               <div className="composer-wrap">
                 <div className="composer-label"><span>COMMAND INPUT</span><span><kbd>ENTER</kbd> EXECUTE</span></div>
-                <div className="command-composer"><input ref={inputRef} value={command} onChange={event => setCommand(event.target.value)} onKeyDown={event => { if (event.key === "Enter") submitCommand(); }} placeholder="Type a command or speak..." /><button className={`voice-mode-button ${listening ? "active" : ""}`} onClick={toggleListening} aria-pressed={listening} title={voiceSupported ? "Start microphone input" : "Speech recognition is unavailable in this browser"}><Mic size={15} /><span>Voice Mode</span></button><button className="send-button" onClick={submitCommand} disabled={processing || !command.trim()}><Send size={16} /><span>Send</span></button></div>
+                <div className="command-composer"><input ref={inputRef} value={command} onChange={event => setCommand(event.target.value)} onKeyDown={event => { if (event.key === "Enter") submitCommand(); }} placeholder="Type a command or speak..." /><button className="composer-icon-button" onClick={() => attachmentInputRef.current?.click()} title="Attach an image, document, audio, or video"><Paperclip size={15} /></button><input ref={attachmentInputRef} className="hidden-file-input" type="file" multiple accept="image/*,audio/*,video/*,.pdf,.txt,.md,.csv" onChange={handleAttachmentSelection} /><button className={`voice-mode-button ${listening ? "active" : ""}`} onClick={toggleListening} aria-pressed={listening} title={voiceSupported ? "Start microphone input" : "Speech recognition is unavailable in this browser"}><Mic size={15} /><span>Voice Mode</span></button><button className={`voice-call-button ${voiceCallMode ? "active" : ""}`} onClick={toggleVoiceCall} aria-pressed={voiceCallMode} title="Start a hands-free voice conversation">{voiceCallMode ? <PhoneOff size={15} /> : <Phone size={15} />}<span>{voiceCallMode ? "End call" : "Voice call"}</span></button><button className="send-button" onClick={submitCommand} disabled={processing || !command.trim()}><Send size={16} /><span>Send</span></button></div>
+                {attachments.length > 0 && <div className="attachment-tray">{attachments.map(item => <div className="attachment-chip" key={item.id}>{item.previewUrl && <img src={item.previewUrl} alt="" />}{!item.previewUrl && <Upload size={12} />}<span>{item.name}</span><button onClick={() => removeAttachment(item.id)} aria-label={`Remove ${item.name}`}><X size={12} /></button></div>)}</div>}
+                <div className="composer-tools"><button onClick={toggleVoiceNote} className={`voice-note-button ${recordingVoiceNote ? "recording" : ""}`}><Radio size={12} /> {recordingVoiceNote ? "Stop voice note" : "Record voice note"}</button><span>{voiceCallMode ? "LIVE VOICE CHANNEL · J.A.R.V.I.S IS LISTENING" : "Attach evidence or start a hands-free conversation"}</span></div>
                 <div className="composer-foot"><span><span className="tiny-green-dot" /> Secure operator channel</span><span>Press <kbd>/</kbd> anywhere to focus</span></div>
               </div>
             </section>

@@ -51,4 +51,8 @@
 - [x] Browser voice replies use a generic original regal anime heroine profile: warm, shy, composed, serious, and tactical; the UI does not claim to reproduce a named real or copyrighted character voice.
 - [x] Task Forge turns each submitted command into a visible task with reasoning/preparation progress, approval state, and an explicit approval action for preparation.
 - [x] The assistant can autonomously reason, write plans, draft code, and prepare self-build steps, while OAuth, permissions, repository writes, infrastructure changes, external side effects, and deployment remain approval-gated.
+- [x] The composer provides browser image/file staging, voice-note recording, attachment chips, and a hands-free voice-call style mode with spoken replies.
+- [ ] Persist uploaded media per user through managed storage, then send signed media URLs to vision/transcription services for real multimodal analysis.
+- [ ] Enable the Manus GitHub connector and select a destination repository before pushing the project to the user's GitHub.
+- [ ] Configure a Vercel project/team deployment target and server-side environment variables before deploying outside Manus.
 - [ ] Commit and push the completed change to the canonical `origin/main` checkpoint.
