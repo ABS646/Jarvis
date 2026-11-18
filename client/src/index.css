@@ -201,3 +201,14 @@ kbd { padding: 2px 5px; border: 1px solid rgba(119, 177, 207, .24); border-botto
 .memory-session span { color:#638696; font:8px 'IBM Plex Mono',monospace; }
 .conversation-messages { min-width:0; }
 @media (max-width: 760px) { .conversation-layout { grid-template-columns:1fr; }.chat-memory-rail { border-right:0; border-bottom:1px solid rgba(105,174,208,.12); padding:0 0 12px; }.memory-session-list { flex-direction:row; overflow-x:auto; max-height:none; }.memory-session { min-width:155px; }.conversation-head-actions { justify-content:flex-start; } }
+
+.memory-session { position:relative; display:flex; flex-direction:row; align-items:stretch; gap:4px; padding:0; }
+.memory-session-main { min-width:0; flex:1; display:flex; flex-direction:column; gap:5px; text-align:left; border:0; border-radius:8px; background:transparent; color:#88a9b7; padding:9px; cursor:pointer; }
+.memory-session-main:hover { background:rgba(89,231,255,.055); }
+.memory-session-actions { display:flex; align-items:center; gap:2px; padding-right:5px; }
+.memory-session-actions button { display:grid; place-items:center; width:24px; height:24px; border:1px solid transparent; border-radius:5px; background:transparent; color:#668a9a; cursor:pointer; }
+.memory-session-actions button:hover { color:var(--jarvis-cyan); border-color:rgba(89,231,255,.26); background:rgba(89,231,255,.1); }
+.memory-session-actions button:last-child:hover { color:#ff8290; border-color:rgba(255,109,122,.32); background:rgba(255,109,122,.09); }
+.memory-session.active .memory-session-main { color:#c7e4ec; }
+.memory-archive-toggle { border:0; background:transparent; color:#59e7ff; padding:0; font:8px 'IBM Plex Mono',monospace; cursor:pointer; }
+.memory-archive-toggle:hover { text-decoration:underline; }

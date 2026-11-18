@@ -1,6 +1,7 @@
 import {
   Activity,
   AlertTriangle,
+  Archive,
   ArrowUpRight,
   Bell,
   Bot,
@@ -41,6 +42,7 @@ import {
   ShieldCheck,
   Sparkles,
   Terminal,
+  Trash2,
   Unplug,
   Video,
   Wifi,
@@ -105,7 +107,7 @@ type ChatMessage = { role: "user" | "assistant"; content: string };
 type TaskStage = "Reasoning" | "Preparing" | "Awaiting approval" | "Approved" | "Complete";
 type TaskItem = { id: string; title: string; detail: string; stage: TaskStage; progress: number; approvalRequired: boolean };
 type LocalAttachment = { id: string; name: string; type: string; size: number; previewUrl?: string };
-type ChatSession = { id: string; title: string; updatedAt: number; messages: ChatMessage[] };
+type ChatSession = { id: string; title: string; updatedAt: number; messages: ChatMessage[]; archived?: boolean };
 
 const welcomeMessage: ChatMessage = { role: "assistant", content: "Good evening, CEO. I am online. Tell me what you want to build, investigate, or organize, and I will break it into clear steps." };
 const loadChatSessions = (): ChatSession[] => {
@@ -214,6 +216,7 @@ export default function Home() {
   const [chatSessions, setChatSessions] = useState<ChatSession[]>(loadChatSessions);
   const [currentChatId, setCurrentChatId] = useState(() => loadChatSessions()[0]?.id ?? "current");
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>(() => loadChatSessions()[0]?.messages ?? [welcomeMessage]);
+  const [showArchivedChats, setShowArchivedChats] = useState(false);
   const [voiceRepliesEnabled, setVoiceRepliesEnabled] = useState(true);
   const [voiceCallMode, setVoiceCallMode] = useState(false);
   const [recordingVoiceNote, setRecordingVoiceNote] = useState(false);
@@ -355,6 +358,31 @@ export default function Home() {
     chatHistoryRef.current = session.messages;
     setChatHistory(session.messages);
     flash("Chat restored", session.title);
+  };
+
+  const archiveChat = (session: ChatSession) => {
+    const archived = !session.archived;
+    const nextSessions = chatSessions.map(item => item.id === session.id ? { ...item, archived, updatedAt: Date.now() } : item);
+    setChatSessions(nextSessions);
+    window.localStorage.setItem("jarvis-chat-sessions", JSON.stringify(nextSessions));
+    if (session.id === currentChatId) {
+      const nextActive = nextSessions.filter(item => !item.archived).sort((a, b) => b.updatedAt - a.updatedAt)[0];
+      if (nextActive) openChat(nextActive);
+      else startNewChat();
+    }
+    flash(archived ? "Chat archived" : "Chat restored", archived ? "It has been removed from the active memory rail." : "It is available again in your active chats.");
+  };
+
+  const deleteChat = (session: ChatSession) => {
+    const nextSessions = chatSessions.filter(item => item.id !== session.id);
+    setChatSessions(nextSessions);
+    window.localStorage.setItem("jarvis-chat-sessions", JSON.stringify(nextSessions));
+    if (session.id === currentChatId) {
+      const nextActive = nextSessions.filter(item => !item.archived).sort((a, b) => b.updatedAt - a.updatedAt)[0];
+      if (nextActive) openChat(nextActive);
+      else startNewChat();
+    }
+    flash("Chat deleted", "The conversation was permanently removed from this browser.");
   };
 
   const approveTask = (task: TaskItem) => {
@@ -640,7 +668,7 @@ export default function Home() {
 
           <section id="conversation" className="conversation-panel glass-panel">
             <div className="conversation-head"><div><div className="eyebrow accent-eyebrow"><span className="eyebrow-line" />CONVERSATION CHANNEL</div><h2>Talk to J.A.R.V.I.S</h2><p>Your private chat memory is saved in this browser and stays user-scoped.</p></div><div className="conversation-head-actions"><button className="new-chat-button" onClick={startNewChat}><Sparkles size={14} /> New chat</button><button className={`voice-profile-button ${voiceRepliesEnabled ? "active" : ""}`} onClick={() => setVoiceRepliesEnabled(previous => !previous)}>{voiceRepliesEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />} <span>REGAL ANIME VOICE</span><small>{voiceRepliesEnabled ? "ON" : "OFF"}</small></button></div></div>
-            <div className="conversation-layout"><aside className="chat-memory-rail"><div className="memory-rail-title"><span>PAST CHATS</span><small>{chatSessions.length}</small></div><button className="memory-new-chat" onClick={startNewChat}><Sparkles size={14} /> New chat</button><div className="memory-session-list">{chatSessions.slice().sort((a, b) => b.updatedAt - a.updatedAt).map(session => <button key={session.id} className={`memory-session ${session.id === currentChatId ? "active" : ""}`} onClick={() => openChat(session)}><strong>{session.title || "Untitled chat"}</strong><span>{new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short" }).format(session.updatedAt ? new Date(session.updatedAt) : new Date())} · {session.messages.filter(message => message.role === "user").length} prompts</span></button>)}</div></aside><div className="conversation-messages">{chatHistory.map((message, index) => <div className={`conversation-message ${message.role}`} key={`${message.role}-${index}`}><div className="conversation-avatar">{message.role === "assistant" ? "J" : "CEO"}</div><div className="conversation-bubble"><span className="conversation-speaker">{message.role === "assistant" ? "J.A.R.V.I.S · REGAL ANIME VOICE" : "YOU · CEO"}</span><p>{message.content}</p></div></div>)}{processing && <div className="conversation-message assistant"><div className="conversation-avatar">J</div><div className="conversation-bubble thinking-bubble"><span className="conversation-speaker">J.A.R.V.I.S · THINKING</span><p><i /><i /><i /></p></div></div>}</div></div>
+            <div className="conversation-layout"><aside className="chat-memory-rail"><div className="memory-rail-title"><span>{showArchivedChats ? "ARCHIVED CHATS" : "PAST CHATS"}</span><button className="memory-archive-toggle" onClick={() => setShowArchivedChats(previous => !previous)}>{showArchivedChats ? "Active" : "Archived"} · {chatSessions.filter(session => Boolean(session.archived)).length}</button></div><button className="memory-new-chat" onClick={startNewChat}><Sparkles size={14} /> New chat</button><div className="memory-session-list">{chatSessions.filter(session => showArchivedChats ? Boolean(session.archived) : !session.archived).slice().sort((a, b) => b.updatedAt - a.updatedAt).map(session => <div key={session.id} className={`memory-session ${session.id === currentChatId ? "active" : ""}`}><button className="memory-session-main" onClick={() => openChat(session)}><strong>{session.title || "Untitled chat"}</strong><span>{new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short" }).format(session.updatedAt ? new Date(session.updatedAt) : new Date())} · {session.messages.filter(message => message.role === "user").length} prompts</span></button><div className="memory-session-actions"><button onClick={() => archiveChat(session)} aria-label={`${session.archived ? "Restore" : "Archive"} ${session.title}`} title={session.archived ? "Restore chat" : "Archive chat"}><Archive size={12} /></button><button onClick={() => deleteChat(session)} aria-label={`Delete ${session.title}`} title="Delete chat"><Trash2 size={12} /></button></div></div>)}</div></aside><div className="conversation-messages">{chatHistory.map((message, index) => <div className={`conversation-message ${message.role}`} key={`${message.role}-${index}`}><div className="conversation-avatar">{message.role === "assistant" ? "J" : "CEO"}</div><div className="conversation-bubble"><span className="conversation-speaker">{message.role === "assistant" ? "J.A.R.V.I.S · REGAL ANIME VOICE" : "YOU · CEO"}</span><p>{message.content}</p></div></div>)}{processing && <div className="conversation-message assistant"><div className="conversation-avatar">J</div><div className="conversation-bubble thinking-bubble"><span className="conversation-speaker">J.A.R.V.I.S · THINKING</span><p><i /><i /><i /></p></div></div>}</div></div>
           </section>
 
           <section id="tasks" className="tasks-section glass-panel">
