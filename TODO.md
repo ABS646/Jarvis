@@ -49,4 +49,6 @@
 - [x] A persistent conversation panel keeps the complete visible user/assistant exchange beside the command center, including a thinking state while the reasoning mutation is pending.
 - [x] The operations overview exposes current work, completed wins, and projects still in progress without claiming that simulated work has completed externally.
 - [x] Browser voice replies use a generic original regal anime heroine profile: warm, shy, composed, serious, and tactical; the UI does not claim to reproduce a named real or copyrighted character voice.
+- [x] Task Forge turns each submitted command into a visible task with reasoning/preparation progress, approval state, and an explicit approval action for preparation.
+- [x] The assistant can autonomously reason, write plans, draft code, and prepare self-build steps, while OAuth, permissions, repository writes, infrastructure changes, external side effects, and deployment remain approval-gated.
 - [ ] Commit and push the completed change to the canonical `origin/main` checkpoint.

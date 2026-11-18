@@ -19,6 +19,7 @@ import {
   Inbox,
   KeyRound,
   Layers3,
+  ListTodo,
   Linkedin,
   LockKeyhole,
   Mail,
@@ -52,7 +53,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 
 type LogKind = "user" | "system" | "info" | "success" | "wait" | "error";
-type View = "Command center" | "Connections" | "Approvals" | "Activity";
+type View = "Command center" | "Tasks" | "Connections" | "Approvals" | "Activity";
 type ConnectionStatus = "Connected" | "Ready";
 
 type LogEntry = {
@@ -97,6 +98,8 @@ type Connection = {
 };
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
+type TaskStage = "Reasoning" | "Preparing" | "Awaiting approval" | "Approved" | "Complete";
+type TaskItem = { id: string; title: string; detail: string; stage: TaskStage; progress: number; approvalRequired: boolean };
 
 const initialLogs: LogEntry[] = [
   { id: 1, time: "12:27:01", kind: "system", message: "Initializing lead scraper..." },
@@ -184,6 +187,11 @@ export default function Home() {
   const [profileName, setProfileName] = useState("");
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([{ role: "assistant", content: "Good evening, CEO. I am online. Tell me what you want to build, investigate, or organize, and I will break it into clear steps." }]);
   const [voiceRepliesEnabled, setVoiceRepliesEnabled] = useState(true);
+  const [tasks, setTasks] = useState<TaskItem[]>([
+    { id: "task-content", title: "Content pipeline", detail: "3 drafts are ready for operator review.", stage: "Awaiting approval", progress: 72, approvalRequired: true },
+    { id: "task-outreach", title: "Riyadh outreach engine", detail: "12 leads staged; no messages will send without approval.", stage: "Preparing", progress: 54, approvalRequired: true },
+    { id: "task-deploy", title: "J.A.R.V.I.S self-build protocol", detail: "Repository and deployment plan can be prepared from an approved task.", stage: "Reasoning", progress: 28, approvalRequired: true },
+  ]);
   const inputRef = useRef<HTMLInputElement>(null);
   const terminalRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
@@ -288,6 +296,12 @@ export default function Home() {
     window.setTimeout(() => setNotification(null), 3600);
   };
 
+  const approveTask = (task: TaskItem) => {
+    setTasks(previous => previous.map(item => item.id === task.id ? { ...item, stage: "Approved", progress: Math.max(item.progress, 80), approvalRequired: false } : item));
+    addLog("success", `Task approved: ${task.title}. J.A.R.V.I.S may now prepare the authorized next step.`);
+    flash("Task approved", `${task.title} is cleared for preparation. External execution remains adapter-gated.`);
+  };
+
   const runAction = (id: string, label: string) => {
     setProcessing(true);
     setLastAction(`${label.toUpperCase()} IN PROGRESS`);
@@ -326,6 +340,8 @@ export default function Home() {
     if (!trimmed || processingRef.current) return;
     setCommand("");
     setHistory(prev => [trimmed, ...prev].slice(0, 5));
+    const taskId = `task-${Date.now()}`;
+    setTasks(previous => [{ id: taskId, title: trimmed.slice(0, 52), detail: "J.A.R.V.I.S is converting your instruction into an actionable plan.", stage: "Reasoning" as const, progress: 18, approvalRequired: true }, ...previous].slice(0, 6));
     addLog("user", trimmed);
     const nextMessages: ChatMessage[] = [...chatHistoryRef.current, { role: "user" as const, content: trimmed }].slice(-24);
     chatHistoryRef.current = nextMessages;
@@ -343,6 +359,7 @@ export default function Home() {
       const updatedMessages = [...nextMessages, assistantMessage].slice(-24);
       chatHistoryRef.current = updatedMessages;
       setChatHistory(updatedMessages);
+      setTasks(previous => previous.map(item => item.id === taskId ? { ...item, detail: "Plan prepared. Review the approval boundary before any connected service is used.", stage: "Awaiting approval", progress: 62 } : item));
       addLog("success", response.message);
       speakAssistant(response.message);
       addLog("success", "Workflow plan ready. J.A.R.V.I.S has prepared the next action for review.");
@@ -437,8 +454,8 @@ export default function Home() {
         <aside className="side-rail">
           <div className="rail-top"><span className="rail-caption">COMMAND DECK</span><button className="rail-collapse" aria-label="Collapse navigation"><ChevronRight size={16} /></button></div>
           <nav className="rail-nav" aria-label="Primary navigation">
-            {([ ["Command center", Command, "01"], ["Connections", Network, "02"], ["Approvals", ShieldCheck, String(approvals.length).padStart(2, "0")], ["Activity", Activity, "04"] ] as const).map(([label, Icon, number]) => (
-              <button key={label} className={`rail-link ${view === label ? "active" : ""}`} onClick={() => { setView(label); if (label === "Connections") document.getElementById("connections")?.scrollIntoView({ behavior: "smooth" }); if (label === "Approvals") document.getElementById("approvals")?.scrollIntoView({ behavior: "smooth" }); if (label === "Activity") document.getElementById("activity")?.scrollIntoView({ behavior: "smooth" }); }}>
+            {([ ["Command center", Command, "01"], ["Tasks", ListTodo, String(tasks.length).padStart(2, "0")], ["Connections", Network, "02"], ["Approvals", ShieldCheck, String(approvals.length).padStart(2, "0")], ["Activity", Activity, "04"] ] as const).map(([label, Icon, number]) => (
+              <button key={label} className={`rail-link ${view === label ? "active" : ""}`} onClick={() => { setView(label); if (label === "Tasks") document.getElementById("tasks")?.scrollIntoView({ behavior: "smooth" }); if (label === "Connections") document.getElementById("connections")?.scrollIntoView({ behavior: "smooth" }); if (label === "Approvals") document.getElementById("approvals")?.scrollIntoView({ behavior: "smooth" }); if (label === "Activity") document.getElementById("activity")?.scrollIntoView({ behavior: "smooth" }); }}>
                 <span className="rail-icon"><Icon size={16} /></span><span>{label}</span><small>{number}</small>
               </button>
             ))}
@@ -498,6 +515,11 @@ export default function Home() {
           <section id="conversation" className="conversation-panel glass-panel">
             <div className="conversation-head"><div><div className="eyebrow accent-eyebrow"><span className="eyebrow-line" />CONVERSATION CHANNEL</div><h2>Talk to J.A.R.V.I.S</h2><p>Your complete command history stays visible here.</p></div><button className={`voice-profile-button ${voiceRepliesEnabled ? "active" : ""}`} onClick={() => setVoiceRepliesEnabled(previous => !previous)}>{voiceRepliesEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />} <span>REGAL ANIME VOICE</span><small>{voiceRepliesEnabled ? "ON" : "OFF"}</small></button></div>
             <div className="conversation-messages">{chatHistory.map((message, index) => <div className={`conversation-message ${message.role}`} key={`${message.role}-${index}`}><div className="conversation-avatar">{message.role === "assistant" ? "J" : "CEO"}</div><div className="conversation-bubble"><span className="conversation-speaker">{message.role === "assistant" ? "J.A.R.V.I.S · REGAL ANIME VOICE" : "YOU · CEO"}</span><p>{message.content}</p></div></div>)}{processing && <div className="conversation-message assistant"><div className="conversation-avatar">J</div><div className="conversation-bubble thinking-bubble"><span className="conversation-speaker">J.A.R.V.I.S · THINKING</span><p><i /><i /><i /></p></div></div>}</div>
+          </section>
+
+          <section id="tasks" className="tasks-section glass-panel">
+            <div className="tasks-head"><div><div className="eyebrow accent-eyebrow"><span className="eyebrow-line" />TASK FORGE</div><h2>Work J.A.R.V.I.S is preparing</h2><p>Every instruction becomes a visible task. Approvals unlock preparation; OAuth and platform permissions still control external execution.</p></div><span className="task-mode-pill"><ListTodo size={13} /> APPROVAL-GATED AUTONOMY</span></div>
+            <div className="task-list">{tasks.map(task => <div className="task-card" key={task.id}><div className={`task-stage-dot ${task.stage.toLowerCase().replaceAll(" ", "-")}`} /><div className="task-copy"><div className="task-title-row"><strong>{task.title}</strong><span>{task.stage}</span></div><small>{task.detail}</small><div className="task-progress"><i><b style={{ width: `${task.progress}%` }} /></i><em>{task.progress}%</em></div></div>{task.approvalRequired ? <button className="task-approve-button" onClick={() => approveTask(task)}><Check size={13} /> Approve prep</button> : <span className="task-cleared"><CheckCircle2 size={14} /> Cleared</span>}</div>)}</div>
           </section>
 
           <section className="quick-actions-section">
