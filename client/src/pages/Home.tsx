@@ -40,6 +40,8 @@ import {
   Unplug,
   Video,
   Wifi,
+  Volume2,
+  VolumeX,
   X,
   Zap,
   type LucideIcon,
@@ -180,12 +182,13 @@ export default function Home() {
   const [notification, setNotification] = useState<{ title: string; detail: string } | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileName, setProfileName] = useState("");
-  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([{ role: "assistant", content: "Good evening, CEO. I am online. Tell me what you want to build, investigate, or organize, and I will break it into clear steps." }]);
+  const [voiceRepliesEnabled, setVoiceRepliesEnabled] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
   const terminalRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const processingRef = useRef(false);
-  const chatHistoryRef = useRef<ChatMessage[]>([]);
+  const chatHistoryRef = useRef<ChatMessage[]>([{ role: "assistant", content: "Good evening, CEO. I am online. Tell me what you want to build, investigate, or organize, and I will break it into clear steps." }]);
 
   useEffect(() => {
     setProfileName(auth.user?.name ?? "");
@@ -306,13 +309,14 @@ export default function Home() {
   };
 
   const speakAssistant = (text: string) => {
-    if (!("speechSynthesis" in window)) return;
+    if (!voiceRepliesEnabled || !("speechSynthesis" in window)) return;
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text.replace(/[*#`]/g, ""));
-    utterance.rate = 0.96;
-    utterance.pitch = 0.84;
+    utterance.rate = 0.9;
+    utterance.pitch = 1.08;
     utterance.volume = 1;
-    const preferredVoice = window.speechSynthesis.getVoices().find(voice => /en[-_](GB|US)/i.test(voice.lang) && /Google|Microsoft|Samantha|Daniel/i.test(voice.name));
+    const availableVoices = window.speechSynthesis.getVoices();
+    const preferredVoice = availableVoices.find(voice => /en[-_](GB|US)/i.test(voice.lang) && /female|zira|samantha|karen|serena|victoria/i.test(voice.name)) ?? availableVoices.find(voice => /en[-_](GB|US)/i.test(voice.lang));
     if (preferredVoice) utterance.voice = preferredVoice;
     window.speechSynthesis.speak(utterance);
   };
@@ -458,6 +462,12 @@ export default function Home() {
             <div className="metric-card"><div className="metric-top"><span>UPTIME</span><Activity size={15} /></div><strong>99.98<small>%</small></strong><span className="metric-change positive">+0.02% <span>last 30 days</span></span><div className="sparkline green"><i /><i /><i /><i /><i /><i /><i /><i /><i /></div></div>
           </section>
 
+          <section className="ops-overview" aria-label="Work overview">
+            <div className="ops-card live-work-card"><div className="ops-card-head"><div><div className="eyebrow">LIVE WORK</div><h3>What J.A.R.V.I.S is doing</h3></div><span className="ops-live-dot"><span className="pulse-dot" /> LIVE</span></div><div className="ops-task"><span className="ops-task-icon"><Radio size={14} /></span><div><strong>{processing ? "Analyzing your latest command" : "Monitoring your command deck"}</strong><span>{processing ? "Reasoning core active · response in progress" : "Ready for your next instruction"}</span></div><span className="ops-task-state">{processing ? "ACTIVE" : "READY"}</span></div><div className="ops-task"><span className="ops-task-icon"><RefreshCw size={14} /></span><div><strong>Background worker</strong><span>Connector sync heartbeat every 5 minutes</span></div><span className="ops-task-state success">ONLINE</span></div><div className="ops-progress"><span><span>System workload</span><strong>{processing ? "68%" : "22%"}</strong></span><i><b style={{ width: processing ? "68%" : "22%" }} /></i></div></div>
+            <div className="ops-card success-card"><div className="ops-card-head"><div><div className="eyebrow">SUCCESS SIGNALS</div><h3>Completed wins</h3></div><CheckCircle2 size={18} /></div><div className="success-number"><strong>24</strong><span>videos generated</span></div><div className="success-row"><span><Check size={12} /> Leads discovered</span><strong>128</strong></div><div className="success-row"><span><Check size={12} /> Messages prepared</span><strong>64</strong></div><div className="success-row"><span><Check size={12} /> Workflows cleared</span><strong>18</strong></div></div>
+            <div className="ops-card project-card"><div className="ops-card-head"><div><div className="eyebrow">PROJECT RADAR</div><h3>Still going</h3></div><Layers3 size={18} /></div><div className="project-row"><span className="project-status violet" /><div><strong>Content pipeline</strong><span>3 drafts awaiting review</span></div><small>72%</small></div><div className="project-row"><span className="project-status cyan" /><div><strong>Outreach engine</strong><span>12 leads staged for approval</span></div><small>54%</small></div><div className="project-row"><span className="project-status amber" /><div><strong>Production deploy</strong><span>Build #184 ready to promote</span></div><small>88%</small></div></div>
+          </section>
+
           <div className="hero-grid">
             <section className={`orb-panel glass-panel ${listening ? "listening" : ""} ${processing ? "processing" : ""}`}>
               <div className="panel-topline"><span className="panel-index">01</span><span>CORE INTERFACE</span><span className="topline-right"><Radio size={13} /> {processing ? "EXECUTING" : listening ? "LISTENING" : "STANDBY"}</span></div>
@@ -484,6 +494,11 @@ export default function Home() {
               <div className="terminal-footer"><span><Wifi size={13} /> Stream connected</span><span>Buffer {logs.length.toString().padStart(2, "0")} / 99</span></div>
             </section>
           </div>
+
+          <section id="conversation" className="conversation-panel glass-panel">
+            <div className="conversation-head"><div><div className="eyebrow accent-eyebrow"><span className="eyebrow-line" />CONVERSATION CHANNEL</div><h2>Talk to J.A.R.V.I.S</h2><p>Your complete command history stays visible here.</p></div><button className={`voice-profile-button ${voiceRepliesEnabled ? "active" : ""}`} onClick={() => setVoiceRepliesEnabled(previous => !previous)}>{voiceRepliesEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />} <span>REGAL ANIME VOICE</span><small>{voiceRepliesEnabled ? "ON" : "OFF"}</small></button></div>
+            <div className="conversation-messages">{chatHistory.map((message, index) => <div className={`conversation-message ${message.role}`} key={`${message.role}-${index}`}><div className="conversation-avatar">{message.role === "assistant" ? "J" : "CEO"}</div><div className="conversation-bubble"><span className="conversation-speaker">{message.role === "assistant" ? "J.A.R.V.I.S · REGAL ANIME VOICE" : "YOU · CEO"}</span><p>{message.content}</p></div></div>)}{processing && <div className="conversation-message assistant"><div className="conversation-avatar">J</div><div className="conversation-bubble thinking-bubble"><span className="conversation-speaker">J.A.R.V.I.S · THINKING</span><p><i /><i /><i /></p></div></div>}</div>
+          </section>
 
           <section className="quick-actions-section">
             <SectionLabel eyebrow="03 / FAST COMMANDS" title="Quick actions" right={<span className="section-note"><Zap size={13} /> One-click workflows</span>} />

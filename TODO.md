@@ -46,4 +46,7 @@
 - [x] Per-user service connection records persist safely in the managed database, expose only safe browser status, and encrypt stored OAuth tokens server-side.
 - [x] GitHub and Vercel have signed PKCE OAuth start/callback paths with identity validation; social providers show an accurate credentials-required state until their developer apps are configured and approved.
 - [x] The idempotent `/api/scheduled/worker` endpoint claims and records background jobs, and the `jarvis-background-worker` Heartbeat runs every five minutes.
+- [x] A persistent conversation panel keeps the complete visible user/assistant exchange beside the command center, including a thinking state while the reasoning mutation is pending.
+- [x] The operations overview exposes current work, completed wins, and projects still in progress without claiming that simulated work has completed externally.
+- [x] Browser voice replies use a generic original regal anime heroine profile: warm, shy, composed, serious, and tactical; the UI does not claim to reproduce a named real or copyrighted character voice.
 - [ ] Commit and push the completed change to the canonical `origin/main` checkpoint.
