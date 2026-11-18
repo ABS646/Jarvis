@@ -105,6 +105,18 @@ type ChatMessage = { role: "user" | "assistant"; content: string };
 type TaskStage = "Reasoning" | "Preparing" | "Awaiting approval" | "Approved" | "Complete";
 type TaskItem = { id: string; title: string; detail: string; stage: TaskStage; progress: number; approvalRequired: boolean };
 type LocalAttachment = { id: string; name: string; type: string; size: number; previewUrl?: string };
+type ChatSession = { id: string; title: string; updatedAt: number; messages: ChatMessage[] };
+
+const welcomeMessage: ChatMessage = { role: "assistant", content: "Good evening, CEO. I am online. Tell me what you want to build, investigate, or organize, and I will break it into clear steps." };
+const loadChatSessions = (): ChatSession[] => {
+  if (typeof window !== "undefined") {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem("jarvis-chat-sessions") || "null") as ChatSession[] | null;
+      if (saved?.length) return saved;
+    } catch { /* use a clean session */ }
+  }
+  return [{ id: "current", title: "New command session", updatedAt: Date.now(), messages: [welcomeMessage] }];
+};
 
 const initialLogs: LogEntry[] = [
   { id: 1, time: "12:27:01", kind: "system", message: "Initializing lead scraper..." },
@@ -128,6 +140,15 @@ const actionData = [
   { id: "video", label: "Generate Video", description: "Auto-create & post content", icon: Video, stat: "3 drafts queued", tint: "violet" },
   { id: "deploy", label: "Deploy Project", description: "Push to GitHub & Vercel", icon: Rocket, stat: "main · clean", tint: "amber" },
 ];
+
+const connectionRequirements: Record<string, string> = {
+  gmail: "Gmail adapter pending · Google OAuth app required",
+  github: "Missing GITHUB_CLIENT_ID / SECRET or PUBLIC_APP_URL",
+  vercel: "Missing VERCEL_CLIENT_ID / SECRET or PUBLIC_APP_URL",
+  linkedin: "LinkedIn developer app + approved OAuth scopes required",
+  openai: "Managed by J.A.R.V.I.S · no separate connection needed",
+  video: "Video provider adapters are not configured yet",
+};
 
 const formatTime = () => new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date());
 const formatDate = () => new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "2-digit", month: "short", year: "numeric" }).format(new Date()).toUpperCase();
@@ -190,7 +211,9 @@ export default function Home() {
   const [notification, setNotification] = useState<{ title: string; detail: string } | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileName, setProfileName] = useState("");
-  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([{ role: "assistant", content: "Good evening, CEO. I am online. Tell me what you want to build, investigate, or organize, and I will break it into clear steps." }]);
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>(loadChatSessions);
+  const [currentChatId, setCurrentChatId] = useState(() => loadChatSessions()[0]?.id ?? "current");
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>(() => loadChatSessions()[0]?.messages ?? [welcomeMessage]);
   const [voiceRepliesEnabled, setVoiceRepliesEnabled] = useState(true);
   const [voiceCallMode, setVoiceCallMode] = useState(false);
   const [recordingVoiceNote, setRecordingVoiceNote] = useState(false);
@@ -208,11 +231,22 @@ export default function Home() {
   const voiceNoteChunksRef = useRef<Blob[]>([]);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const processingRef = useRef(false);
-  const chatHistoryRef = useRef<ChatMessage[]>([{ role: "assistant", content: "Good evening, CEO. I am online. Tell me what you want to build, investigate, or organize, and I will break it into clear steps." }]);
+  const chatHistoryRef = useRef<ChatMessage[]>(loadChatSessions()[0]?.messages ?? [welcomeMessage]);
 
   useEffect(() => {
     setProfileName(auth.user?.name ?? "");
   }, [auth.user?.name]);
+
+  useEffect(() => {
+    setChatSessions(previous => {
+      const firstUserMessage = chatHistory.find(message => message.role === "user")?.content.replace(/\n\n\[Evidence staged:[\s\S]*$/, "") || "New command session";
+      const updated = previous.some(session => session.id === currentChatId)
+        ? previous.map(session => session.id === currentChatId ? { ...session, title: session.title === "New command session" ? firstUserMessage.slice(0, 46) : session.title, updatedAt: Date.now(), messages: chatHistory } : session)
+        : [{ id: currentChatId, title: firstUserMessage.slice(0, 46), updatedAt: Date.now(), messages: chatHistory }, ...previous];
+      window.localStorage.setItem("jarvis-chat-sessions", JSON.stringify(updated.slice(0, 12)));
+      return updated.slice(0, 12);
+    });
+  }, [chatHistory, currentChatId]);
 
   useEffect(() => {
     if (!connectorList.data) return;
@@ -306,6 +340,21 @@ export default function Home() {
   const flash = (title: string, detail: string) => {
     setNotification({ title, detail });
     window.setTimeout(() => setNotification(null), 3600);
+  };
+
+  const startNewChat = () => {
+    const id = `chat-${Date.now()}`;
+    setCurrentChatId(id);
+    chatHistoryRef.current = [welcomeMessage];
+    setChatHistory([welcomeMessage]);
+    flash("New chat ready", "Past conversations remain available in memory.");
+  };
+
+  const openChat = (session: ChatSession) => {
+    setCurrentChatId(session.id);
+    chatHistoryRef.current = session.messages;
+    setChatHistory(session.messages);
+    flash("Chat restored", session.title);
   };
 
   const approveTask = (task: TaskItem) => {
@@ -484,8 +533,8 @@ export default function Home() {
     }
     const configured = connectorCatalog.data?.find(item => item.provider === id)?.configured;
     if (!configured) {
-      flash(`${connection.label} needs credentials`, "Configure the provider developer app in server secrets before connecting it.");
-      addLog("wait", `${connection.label} is awaiting provider OAuth credentials.`);
+      flash(`${connection.label} is not ready`, connectionRequirements[id] || "Configure the provider developer app in server secrets before connecting it.");
+      addLog("wait", `${connection.label} cannot launch OAuth until its required setup is complete.`);
       return;
     }
     try {
@@ -590,8 +639,8 @@ export default function Home() {
           </div>
 
           <section id="conversation" className="conversation-panel glass-panel">
-            <div className="conversation-head"><div><div className="eyebrow accent-eyebrow"><span className="eyebrow-line" />CONVERSATION CHANNEL</div><h2>Talk to J.A.R.V.I.S</h2><p>Your complete command history stays visible here.</p></div><button className={`voice-profile-button ${voiceRepliesEnabled ? "active" : ""}`} onClick={() => setVoiceRepliesEnabled(previous => !previous)}>{voiceRepliesEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />} <span>REGAL ANIME VOICE</span><small>{voiceRepliesEnabled ? "ON" : "OFF"}</small></button></div>
-            <div className="conversation-messages">{chatHistory.map((message, index) => <div className={`conversation-message ${message.role}`} key={`${message.role}-${index}`}><div className="conversation-avatar">{message.role === "assistant" ? "J" : "CEO"}</div><div className="conversation-bubble"><span className="conversation-speaker">{message.role === "assistant" ? "J.A.R.V.I.S · REGAL ANIME VOICE" : "YOU · CEO"}</span><p>{message.content}</p></div></div>)}{processing && <div className="conversation-message assistant"><div className="conversation-avatar">J</div><div className="conversation-bubble thinking-bubble"><span className="conversation-speaker">J.A.R.V.I.S · THINKING</span><p><i /><i /><i /></p></div></div>}</div>
+            <div className="conversation-head"><div><div className="eyebrow accent-eyebrow"><span className="eyebrow-line" />CONVERSATION CHANNEL</div><h2>Talk to J.A.R.V.I.S</h2><p>Your private chat memory is saved in this browser and stays user-scoped.</p></div><div className="conversation-head-actions"><button className="new-chat-button" onClick={startNewChat}><Sparkles size={14} /> New chat</button><button className={`voice-profile-button ${voiceRepliesEnabled ? "active" : ""}`} onClick={() => setVoiceRepliesEnabled(previous => !previous)}>{voiceRepliesEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />} <span>REGAL ANIME VOICE</span><small>{voiceRepliesEnabled ? "ON" : "OFF"}</small></button></div></div>
+            <div className="conversation-layout"><aside className="chat-memory-rail"><div className="memory-rail-title"><span>PAST CHATS</span><small>{chatSessions.length}</small></div><button className="memory-new-chat" onClick={startNewChat}><Sparkles size={14} /> New chat</button><div className="memory-session-list">{chatSessions.slice().sort((a, b) => b.updatedAt - a.updatedAt).map(session => <button key={session.id} className={`memory-session ${session.id === currentChatId ? "active" : ""}`} onClick={() => openChat(session)}><strong>{session.title || "Untitled chat"}</strong><span>{new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short" }).format(session.updatedAt ? new Date(session.updatedAt) : new Date())} · {session.messages.filter(message => message.role === "user").length} prompts</span></button>)}</div></aside><div className="conversation-messages">{chatHistory.map((message, index) => <div className={`conversation-message ${message.role}`} key={`${message.role}-${index}`}><div className="conversation-avatar">{message.role === "assistant" ? "J" : "CEO"}</div><div className="conversation-bubble"><span className="conversation-speaker">{message.role === "assistant" ? "J.A.R.V.I.S · REGAL ANIME VOICE" : "YOU · CEO"}</span><p>{message.content}</p></div></div>)}{processing && <div className="conversation-message assistant"><div className="conversation-avatar">J</div><div className="conversation-bubble thinking-bubble"><span className="conversation-speaker">J.A.R.V.I.S · THINKING</span><p><i /><i /><i /></p></div></div>}</div></div>
           </section>
 
           <section id="tasks" className="tasks-section glass-panel">
