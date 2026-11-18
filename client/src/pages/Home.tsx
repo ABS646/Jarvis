@@ -105,11 +105,11 @@ const initialLogs: LogEntry[] = [
 ];
 
 const initialConnections: Connection[] = [
-  { id: "gmail", label: "Gmail", description: "Inbox, drafts & outbound mail", meta: "OAuth adapter ready", status: "Ready", icon: Mail, tone: "coral" },
-  { id: "github", label: "GitHub", description: "Repos, branches & pull requests", meta: "OAuth adapter ready", status: "Connected", icon: Github, tone: "violet" },
+  { id: "gmail", label: "Gmail", description: "Inbox, drafts & outbound mail", meta: "OAuth credentials required", status: "Ready", icon: Mail, tone: "coral" },
+  { id: "github", label: "GitHub", description: "Repos, branches & pull requests", meta: "OAuth credentials required", status: "Ready", icon: Github, tone: "violet" },
   { id: "vercel", label: "Vercel", description: "Projects, builds & deployments", meta: "OAuth adapter ready", status: "Ready", icon: Globe2, tone: "slate" },
   { id: "linkedin", label: "LinkedIn", description: "Lead discovery & prospect lists", meta: "Connector pending", status: "Ready", icon: Linkedin, tone: "blue" },
-  { id: "openai", label: "OpenAI", description: "Reasoning, copy & structured output", meta: "API adapter ready", status: "Connected", icon: Sparkles, tone: "mint" },
+  { id: "openai", label: "OpenAI", description: "Reasoning, copy & structured output", meta: "Managed reasoning core", status: "Ready", icon: Sparkles, tone: "mint" },
   { id: "video", label: "Video stack", description: "Generate, review & publish content", meta: "API adapter ready", status: "Ready", icon: Video, tone: "amber" },
 ];
 
@@ -150,6 +150,10 @@ function StatusPill({ children, tone = "online" }: { children: React.ReactNode; 
 export default function Home() {
   const auth = useAuth();
   const assistantChat = trpc.assistant.chat.useMutation();
+  const connectorCatalog = trpc.connections.catalog.useQuery();
+  const connectorList = trpc.connections.list.useQuery();
+  const connectorStart = trpc.connections.start.useMutation();
+  const connectorDisconnect = trpc.connections.disconnect.useMutation();
   const profileUpdate = trpc.profile.update.useMutation({
     onSuccess: async () => {
       await auth.refresh();
@@ -186,6 +190,14 @@ export default function Home() {
   useEffect(() => {
     setProfileName(auth.user?.name ?? "");
   }, [auth.user?.name]);
+
+  useEffect(() => {
+    if (!connectorList.data) return;
+    setConnections(previous => previous.map(connection => {
+      const record = connectorList.data.find(item => item.provider === connection.id);
+      return record ? { ...connection, status: record.status === "connected" ? "Connected" : "Ready", meta: record.accountLabel || "Connected account" } : connection;
+    }));
+  }, [connectorList.data]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
@@ -364,13 +376,28 @@ export default function Home() {
     }
   };
 
-  const toggleConnection = (id: string) => {
+  const handleConnection = async (id: string) => {
     const connection = connections.find(item => item.id === id);
     if (!connection) return;
-    const nextStatus: ConnectionStatus = connection.status === "Connected" ? "Ready" : "Connected";
-    setConnections(prev => prev.map(item => item.id === id ? { ...item, status: nextStatus } : item));
-    addLog(nextStatus === "Connected" ? "success" : "wait", `${connection.label} ${nextStatus === "Connected" ? "connection authorized" : "connection paused"}.`);
-    flash(nextStatus === "Connected" ? `${connection.label} connected` : `${connection.label} disconnected`, nextStatus === "Connected" ? "Adapter is ready for approved workflows." : "No new actions will be sent.");
+    if (connection.status === "Connected") {
+      await connectorDisconnect.mutateAsync({ provider: id as "github" | "vercel" | "instagram" | "tiktok" | "linkedin" | "gmail" });
+      setConnections(prev => prev.map(item => item.id === id ? { ...item, status: "Ready", meta: "Connection revoked" } : item));
+      addLog("wait", `${connection.label} connection revoked. No new actions will be sent.`);
+      flash(`${connection.label} disconnected`, "The server-side token was removed from active use.");
+      return;
+    }
+    const configured = connectorCatalog.data?.find(item => item.provider === id)?.configured;
+    if (!configured) {
+      flash(`${connection.label} needs credentials`, "Configure the provider developer app in server secrets before connecting it.");
+      addLog("wait", `${connection.label} is awaiting provider OAuth credentials.`);
+      return;
+    }
+    try {
+      const result = await connectorStart.mutateAsync({ provider: id as "github" | "vercel" | "instagram" | "tiktok" | "linkedin" | "gmail" });
+      window.location.assign(result.url);
+    } catch (error) {
+      flash(`${connection.label} connection unavailable`, error instanceof Error ? error.message : "Provider OAuth is not configured.");
+    }
   };
 
   const resolveApproval = (item: ApprovalItem, approved: boolean) => {
@@ -464,7 +491,7 @@ export default function Home() {
           </section>
 
           <div className="lower-grid">
-            <section id="connections" className="connections-section glass-panel"><SectionLabel eyebrow="04 / ACCESS LAYER" title="Connections center" right={<span className="connection-count"><span className="status-dot" />{connectedCount} of {connections.length} connected</span>} /><p className="section-description">Authorize the services J.A.R.V.I.S can operate. Each adapter stays dormant until you approve its next action.</p><div className="connection-grid">{connections.map(connection => { const Icon = connection.icon; const connected = connection.status === "Connected"; return <div className="connection-card" key={connection.id}><div className={`provider-icon ${connection.tone}`}><Icon size={19} /></div><div className="connection-copy"><strong>{connection.label}</strong><span>{connection.description}</span><small>{connection.meta}</small></div><button className={`connect-button ${connected ? "connected" : ""}`} onClick={() => toggleConnection(connection.id)}>{connected ? <><Check size={13} /> Connected</> : <>Connect <ArrowUpRight size={13} /></>}</button></div>; })}</div><div className="adapter-note"><LockKeyhole size={14} /><span>OAuth and API credentials stay in protected server-side storage. The browser only receives connection status.</span><button className="text-button">View adapter docs <ChevronRight size={13} /></button></div></section>
+            <section id="connections" className="connections-section glass-panel"><SectionLabel eyebrow="04 / ACCESS LAYER" title="Connections center" right={<span className="connection-count"><span className="status-dot" />{connectedCount} of {connections.length} connected</span>} /><p className="section-description">Authorize the services J.A.R.V.I.S can operate. Each adapter stays dormant until you approve its next action.</p><div className="connection-grid">{connections.map(connection => { const Icon = connection.icon; const connected = connection.status === "Connected"; return <div className="connection-card" key={connection.id}><div className={`provider-icon ${connection.tone}`}><Icon size={19} /></div><div className="connection-copy"><strong>{connection.label}</strong><span>{connection.description}</span><small>{connection.meta}</small></div><button className={`connect-button ${connected ? "connected" : ""}`} onClick={() => handleConnection(connection.id)}>{connected ? <><Check size={13} /> Connected</> : <>Connect <ArrowUpRight size={13} /></>}</button></div>; })}</div><div className="adapter-note"><LockKeyhole size={14} /><span>OAuth tokens are encrypted server-side. Social publishing remains approval-gated and requires each platform's developer review.</span><button className="text-button">View adapter docs <ChevronRight size={13} /></button></div></section>
 
             <section id="approvals" className="approvals-section glass-panel"><SectionLabel eyebrow="05 / HUMAN IN THE LOOP" title="Approval queue" right={<span className="queue-count">{approvals.length} pending</span>} /><div className="approval-list">{approvals.length ? approvals.map(item => { const Icon = item.icon; return <div className="approval-item" key={item.id}><div className="approval-icon"><Icon size={16} /></div><div className="approval-copy"><div className="approval-meta"><span>{item.tag}</span><span className={item.risk === "Sensitive" ? "sensitive" : "review"}>{item.risk}</span></div><strong>{item.action}</strong><small>{item.detail}</small><div className="approval-buttons"><button className="approve-button" onClick={() => resolveApproval(item, true)}><Check size={13} /> Approve</button><button className="reject-button" onClick={() => resolveApproval(item, false)}><X size={13} /> Reject</button></div></div></div>; }) : <div className="empty-queue"><CheckCircle2 size={24} /><strong>Queue clear</strong><span>No external actions are waiting for approval.</span></div>}</div><div className="approval-footer"><ShieldCheck size={14} /><span>Nothing is sent, published, or deployed without operator approval.</span></div></section>
           </div>

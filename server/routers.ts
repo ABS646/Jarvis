@@ -3,7 +3,8 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { invokeLLM } from "./_core/llm";
-import { updateUserProfile } from "./db";
+import { listServiceConnections, revokeServiceConnection, updateUserProfile } from "./db";
+import { createCodeChallenge, createCodeVerifier, createConnectorState, getAuthorizationUrl, getConnectorRedirectUri, getProviderPublicStatus, PROVIDERS } from "./connectors";
 import { z } from "zod";
 
 export const appRouter = router({
@@ -54,6 +55,25 @@ export const appRouter = router({
           throw new Error("J.A.R.V.I.S returned no usable response");
         }
         return { message: content.trim() };
+      }),
+  }),
+
+  connections: router({
+    catalog: protectedProcedure.query(() => PROVIDERS.map(provider => getProviderPublicStatus(provider))),
+    list: protectedProcedure.query(({ ctx }) => listServiceConnections(ctx.user.id)),
+    start: protectedProcedure
+      .input(z.object({ provider: z.enum(PROVIDERS) }))
+      .mutation(async ({ ctx, input }) => {
+        const redirectUri = getConnectorRedirectUri(input.provider);
+        const codeVerifier = createCodeVerifier();
+        const state = await createConnectorState(input.provider, ctx.user.openId, redirectUri, codeVerifier);
+        return { provider: input.provider, url: getAuthorizationUrl(input.provider, state, redirectUri, createCodeChallenge(codeVerifier)) };
+      }),
+    disconnect: protectedProcedure
+      .input(z.object({ provider: z.enum(PROVIDERS) }))
+      .mutation(async ({ ctx, input }) => {
+        await revokeServiceConnection(input.provider, ctx.user.id);
+        return { success: true as const };
       }),
   }),
 

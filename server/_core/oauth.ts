@@ -2,6 +2,7 @@ import { COOKIE_NAME, ONE_YEAR_MS, OAUTH_STATE_COOKIE, decodeOAuthState } from "
 import { parse as parseCookieHeader } from "cookie";
 import type { Express, Request, Response } from "express";
 import * as db from "../db";
+import { encryptSecret, exchangeCode, fetchProviderIdentity, PROVIDERS, verifyConnectorState, type Provider } from "../connectors";
 import { getSessionCookieOptions } from "./cookies";
 import { sdk } from "./sdk";
 
@@ -60,6 +61,50 @@ export function registerOAuthRoutes(app: Express) {
     } catch (error) {
       console.error("[OAuth] Callback failed", error instanceof Error ? error.message : "unknown error");
       res.status(500).json({ error: "OAuth callback failed" });
+    }
+  });
+
+  app.get("/api/connect/:provider/callback", async (req: Request, res: Response) => {
+    const provider = req.params.provider as Provider;
+    const code = getQueryParam(req, "code");
+    const state = getQueryParam(req, "state");
+    const error = getQueryParam(req, "error");
+    if (!PROVIDERS.includes(provider)) {
+      res.status(404).send("Unknown connector");
+      return;
+    }
+    if (error) {
+      res.redirect(302, `/?connection=${encodeURIComponent(provider)}&status=denied`);
+      return;
+    }
+    if (!code || !state) {
+      res.status(400).send("Connector OAuth code and state are required");
+      return;
+    }
+    try {
+      const connectorState = await verifyConnectorState(state);
+      if (connectorState.provider !== provider) throw new Error("Connector state provider mismatch");
+      const token = await exchangeCode(provider, code, connectorState.redirectUri, connectorState.codeVerifier);
+      const identity = await fetchProviderIdentity(provider, token.accessToken);
+      const user = await db.getUserByOpenId(connectorState.openId);
+      if (!user) throw new Error("Authenticated J.A.R.V.I.S user not found");
+      await db.upsertServiceConnection({
+        userId: user.id,
+        provider,
+        status: "connected",
+        accountId: identity.accountId,
+        accountLabel: identity.accountLabel,
+        scopes: token.scopes ?? null,
+        encryptedAccessToken: encryptSecret(token.accessToken),
+        encryptedRefreshToken: token.refreshToken ? encryptSecret(token.refreshToken) : null,
+        expiresAt: token.expiresAt ?? null,
+        metadata: identity.metadata,
+        lastUsedAt: new Date(),
+      });
+      res.redirect(302, `/?connection=${encodeURIComponent(provider)}&status=connected`);
+    } catch (callbackError) {
+      console.error(`[Connector OAuth] ${provider} callback failed`, callbackError instanceof Error ? callbackError.message : "unknown error");
+      res.redirect(302, `/?connection=${encodeURIComponent(provider)}&status=error`);
     }
   });
 }

@@ -18,6 +18,8 @@ The assistant addresses the operator as **CEO** and behaves conversationally: ty
 - Treat the existing `users` row keyed by Manus `openId` as the multi-user profile boundary. `profile.update` is a protected server mutation that can edit only the current user's display name; email, role, openId, and sign-in timestamps remain server-owned.
 - Route authenticated commands through the managed server-side LLM with a concise conversation window and an original tactical/anime-inspired J.A.R.V.I.S personality. The assistant may reason, explain, draft, and plan, but must not claim external side effects without verified adapter results; consequential actions remain approval-gated.
 - Use browser SpeechSynthesis for immediate spoken assistant replies when supported, with a restrained serious tactical delivery rather than imitating a real person or copyrighted character voice.
+- Store per-user connector state in `service_connections`, encrypt OAuth access and refresh tokens at rest, and expose only safe provider/account status to the browser. GitHub and Vercel use signed PKCE authorization-code callbacks; Instagram and TikTok remain adapter-compatible but require their own configured developer applications and platform review before publishing is enabled.
+- Store durable work in `background_jobs`. The `/api/scheduled/worker` callback authenticates WebDev Heartbeat cron identity, claims one queued job idempotently, processes it, and records success/failure. The registered `jarvis-background-worker` schedule runs every five minutes and is independent of the web process lifetime.
 
 ## Project structure
 
@@ -25,7 +27,8 @@ The assistant addresses the operator as **CEO** and behaves conversationally: ty
 - `client/src/index.css` — dark command-center visual system, responsive layout, orbital animation, terminal styles, and component primitives.
 - `client/src/App.tsx` — dark-only theme shell and routing.
 - `public/manus-routes.json` — published route manifest.
-- `server/` and `drizzle/` — retained starter backend/database foundation with Manus OAuth, protected tRPC procedures, managed LLM reasoning, and user-scoped profile persistence for future connection records, audit logs, and OAuth callback persistence.
+- `server/connectors.ts` and `server/worker.ts` — encrypted provider token helpers, OAuth adapter contracts, verified identity sync, and idempotent background-job processing.
+- `server/` and `drizzle/` — managed database foundation with Manus OAuth, protected tRPC procedures, managed LLM reasoning, user-scoped profiles, service connection records, and background job records.
 
 ## Design direction
 

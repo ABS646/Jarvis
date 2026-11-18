@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { and, asc, eq, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { backgroundJobs, InsertBackgroundJob, InsertServiceConnection, InsertUser, serviceConnections, users } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -96,6 +96,76 @@ export async function updateUserProfile(openId: string, name: string) {
 
   await db.update(users).set({ name }).where(eq(users.openId, openId));
   return getUserByOpenId(openId);
+}
+
+export async function listServiceConnections(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  return db.select({ id: serviceConnections.id, provider: serviceConnections.provider, status: serviceConnections.status, accountId: serviceConnections.accountId, accountLabel: serviceConnections.accountLabel, scopes: serviceConnections.scopes, expiresAt: serviceConnections.expiresAt, lastUsedAt: serviceConnections.lastUsedAt }).from(serviceConnections).where(eq(serviceConnections.userId, userId));
+}
+
+export async function upsertServiceConnection(values: InsertServiceConnection) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const existing = await db.select().from(serviceConnections).where(and(eq(serviceConnections.userId, values.userId), eq(serviceConnections.provider, values.provider))).limit(1);
+  if (existing[0]) {
+    await db.update(serviceConnections).set(values).where(eq(serviceConnections.id, existing[0].id));
+    return { ...existing[0], ...values };
+  }
+  await db.insert(serviceConnections).values(values);
+  const inserted = await db.select().from(serviceConnections).where(and(eq(serviceConnections.userId, values.userId), eq(serviceConnections.provider, values.provider))).limit(1);
+  return inserted[0];
+}
+
+export async function getServiceConnectionById(id: number, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const rows = await db.select().from(serviceConnections).where(and(eq(serviceConnections.id, id), eq(serviceConnections.userId, userId))).limit(1);
+  return rows[0];
+}
+
+export async function updateServiceConnectionIdentity(id: number, userId: number, identity: { accountId: string; accountLabel: string; metadata: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  await db.update(serviceConnections).set({ accountId: identity.accountId, accountLabel: identity.accountLabel, metadata: identity.metadata, status: "connected", lastUsedAt: new Date() }).where(and(eq(serviceConnections.id, id), eq(serviceConnections.userId, userId)));
+}
+
+export async function revokeServiceConnection(provider: string, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  await db.update(serviceConnections).set({ status: "revoked", encryptedAccessToken: null, encryptedRefreshToken: null, expiresAt: null }).where(and(eq(serviceConnections.provider, provider), eq(serviceConnections.userId, userId)));
+}
+
+export async function queueBackgroundJob(values: InsertBackgroundJob) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  try {
+    await db.insert(backgroundJobs).values(values);
+  } catch (error) {
+    const existing = await db.select().from(backgroundJobs).where(eq(backgroundJobs.idempotencyKey, values.idempotencyKey)).limit(1);
+    if (!existing[0]) throw error;
+    return existing[0];
+  }
+  const inserted = await db.select().from(backgroundJobs).where(eq(backgroundJobs.idempotencyKey, values.idempotencyKey)).limit(1);
+  return inserted[0];
+}
+
+export async function claimNextBackgroundJob() {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const now = new Date();
+  const candidates = await db.select().from(backgroundJobs).where(and(eq(backgroundJobs.status, "queued"), lte(backgroundJobs.runAfter, now))).orderBy(asc(backgroundJobs.runAfter)).limit(10);
+  for (const candidate of candidates) {
+    const update = await db.update(backgroundJobs).set({ status: "running", lockedAt: now, attempts: candidate.attempts + 1 }).where(and(eq(backgroundJobs.id, candidate.id), eq(backgroundJobs.status, "queued")));
+    if (update[0].affectedRows > 0) return { ...candidate, status: "running", lockedAt: now, attempts: candidate.attempts + 1 };
+  }
+  return undefined;
+}
+
+export async function finishBackgroundJob(id: number, status: "succeeded" | "failed", lastError?: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  await db.update(backgroundJobs).set({ status, lastError: lastError ?? null }).where(eq(backgroundJobs.id, id));
 }
 
 // TODO: add feature queries here as your schema grows.

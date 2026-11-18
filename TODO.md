@@ -43,4 +43,7 @@
 - [x] Run typecheck/build checks and resolve any actionable issues.
 - [x] Authenticated commands route through the protected managed LLM reasoning core with a tactical J.A.R.V.I.S personality and bounded conversation context.
 - [x] Assistant replies are written to the terminal and spoken through browser SpeechSynthesis when supported; external side effects remain approval-gated.
+- [x] Per-user service connection records persist safely in the managed database, expose only safe browser status, and encrypt stored OAuth tokens server-side.
+- [x] GitHub and Vercel have signed PKCE OAuth start/callback paths with identity validation; social providers show an accurate credentials-required state until their developer apps are configured and approved.
+- [x] The idempotent `/api/scheduled/worker` endpoint claims and records background jobs, and the `jarvis-background-worker` Heartbeat runs every five minutes.
 - [ ] Commit and push the completed change to the canonical `origin/main` checkpoint.
