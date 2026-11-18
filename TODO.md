@@ -41,4 +41,6 @@
 - [x] The top-right operator avatar opens a user-scoped profile surface with editable display name, read-only email/role/account metadata, and sign out.
 - [x] Profile updates use a protected tRPC mutation scoped to the authenticated user's `openId`; role, email, and session fields cannot be edited from the UI.
 - [x] Run typecheck/build checks and resolve any actionable issues.
+- [x] Authenticated commands route through the protected managed LLM reasoning core with a tactical J.A.R.V.I.S personality and bounded conversation context.
+- [x] Assistant replies are written to the terminal and spoken through browser SpeechSynthesis when supported; external side effects remain approval-gated.
 - [ ] Commit and push the completed change to the canonical `origin/main` checkpoint.

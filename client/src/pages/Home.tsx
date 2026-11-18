@@ -94,6 +94,8 @@ type Connection = {
   tone: string;
 };
 
+type ChatMessage = { role: "user" | "assistant"; content: string };
+
 const initialLogs: LogEntry[] = [
   { id: 1, time: "12:27:01", kind: "system", message: "Initializing lead scraper..." },
   { id: 2, time: "12:27:04", kind: "info", message: "5 new potential clients found on LinkedIn." },
@@ -147,6 +149,7 @@ function StatusPill({ children, tone = "online" }: { children: React.ReactNode; 
 
 export default function Home() {
   const auth = useAuth();
+  const assistantChat = trpc.assistant.chat.useMutation();
   const profileUpdate = trpc.profile.update.useMutation({
     onSuccess: async () => {
       await auth.refresh();
@@ -173,10 +176,12 @@ export default function Home() {
   const [notification, setNotification] = useState<{ title: string; detail: string } | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileName, setProfileName] = useState("");
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const terminalRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const processingRef = useRef(false);
+  const chatHistoryRef = useRef<ChatMessage[]>([]);
 
   useEffect(() => {
     setProfileName(auth.user?.name ?? "");
@@ -288,25 +293,55 @@ export default function Home() {
     }, 900);
   };
 
-  const submitText = (text: string) => {
+  const speakAssistant = (text: string) => {
+    if (!("speechSynthesis" in window)) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text.replace(/[*#`]/g, ""));
+    utterance.rate = 0.96;
+    utterance.pitch = 0.84;
+    utterance.volume = 1;
+    const preferredVoice = window.speechSynthesis.getVoices().find(voice => /en[-_](GB|US)/i.test(voice.lang) && /Google|Microsoft|Samantha|Daniel/i.test(voice.name));
+    if (preferredVoice) utterance.voice = preferredVoice;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const submitText = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || processingRef.current) return;
     setCommand("");
     setHistory(prev => [trimmed, ...prev].slice(0, 5));
     addLog("user", trimmed);
+    const nextMessages: ChatMessage[] = [...chatHistoryRef.current, { role: "user" as const, content: trimmed }].slice(-24);
+    chatHistoryRef.current = nextMessages;
+    setChatHistory(nextMessages);
+    processingRef.current = true;
     setProcessing(true);
     setLastAction("J.A.R.V.I.S IS THINKING");
-    flash("J.A.R.V.I.S heard you", `Routing “${trimmed}” to the workflow planner.`);
-    window.setTimeout(() => {
-      addLog("info", "Processing command... Routing to n8n workflow...");
-      setLastAction("ROUTING TO N8N WORKFLOW");
-    }, 360);
-    window.setTimeout(() => {
+    addLog("info", "Processing command... Routing to n8n workflow...");
+    addLog("info", "J.A.R.V.I.S reasoning core is analyzing the request...");
+    flash("J.A.R.V.I.S is thinking", "Your command is being analyzed with the tactical reasoning core.");
+    setLastAction("REASONING CORE ACTIVE");
+    try {
+      const response = await assistantChat.mutateAsync({ messages: nextMessages });
+      const assistantMessage: ChatMessage = { role: "assistant", content: response.message };
+      const updatedMessages = [...nextMessages, assistantMessage].slice(-24);
+      chatHistoryRef.current = updatedMessages;
+      setChatHistory(updatedMessages);
+      addLog("success", response.message);
+      speakAssistant(response.message);
       addLog("success", "Workflow plan ready. J.A.R.V.I.S has prepared the next action for review.");
       setProcessing(false);
+      processingRef.current = false;
       setLastAction("SYSTEM READY");
-      flash("Command complete", "No external action was taken without approval.");
-    }, 1050);
+      flash("J.A.R.V.I.S responded", "No external action was taken without approval.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "The reasoning core is unavailable.";
+      addLog("error", `Reasoning core error: ${message}`);
+      setProcessing(false);
+      processingRef.current = false;
+      setLastAction("SYSTEM READY");
+      flash("J.A.R.V.I.S needs attention", "The command was retained. Check the connection and try again.");
+    }
   };
 
   const submitCommand = () => submitText(command);

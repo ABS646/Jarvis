@@ -16,6 +16,8 @@ The assistant addresses the operator as **CEO** and behaves conversationally: ty
 - Add `/manus-routes.json` for the single `/` route and preserve the existing server/database scaffolding for later persistence and OAuth callbacks.
 - Preserve the starter's Manus OAuth/session implementation as the only authentication system. The dashboard renders a secure sign-in state for logged-out visitors and only mounts private command-center UI after `auth.me` resolves an authenticated user.
 - Treat the existing `users` row keyed by Manus `openId` as the multi-user profile boundary. `profile.update` is a protected server mutation that can edit only the current user's display name; email, role, openId, and sign-in timestamps remain server-owned.
+- Route authenticated commands through the managed server-side LLM with a concise conversation window and an original tactical/anime-inspired J.A.R.V.I.S personality. The assistant may reason, explain, draft, and plan, but must not claim external side effects without verified adapter results; consequential actions remain approval-gated.
+- Use browser SpeechSynthesis for immediate spoken assistant replies when supported, with a restrained serious tactical delivery rather than imitating a real person or copyrighted character voice.
 
 ## Project structure
 
@@ -23,7 +25,7 @@ The assistant addresses the operator as **CEO** and behaves conversationally: ty
 - `client/src/index.css` — dark command-center visual system, responsive layout, orbital animation, terminal styles, and component primitives.
 - `client/src/App.tsx` — dark-only theme shell and routing.
 - `public/manus-routes.json` — published route manifest.
-- `server/` and `drizzle/` — retained starter backend/database foundation with Manus OAuth, protected tRPC procedures, and user-scoped profile persistence for future connection records, audit logs, and OAuth callback persistence.
+- `server/` and `drizzle/` — retained starter backend/database foundation with Manus OAuth, protected tRPC procedures, managed LLM reasoning, and user-scoped profile persistence for future connection records, audit logs, and OAuth callback persistence.
 
 ## Design direction
 
