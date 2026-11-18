@@ -37,5 +37,8 @@
 
 - [x] TypeScript diagnostics are registered for the project.
 - [x] The public route manifest contains the `/` page.
-- [ ] Run typecheck/build checks and resolve any actionable issues.
+- [x] Manus OAuth gates the dashboard with a real loading state, sign-in screen, and authenticated session.
+- [x] The top-right operator avatar opens a user-scoped profile surface with editable display name, read-only email/role/account metadata, and sign out.
+- [x] Profile updates use a protected tRPC mutation scoped to the authenticated user's `openId`; role, email, and session fields cannot be edited from the UI.
+- [x] Run typecheck/build checks and resolve any actionable issues.
 - [ ] Commit and push the completed change to the canonical `origin/main` checkpoint.

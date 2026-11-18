@@ -14,14 +14,16 @@ The assistant addresses the operator as **CEO** and behaves conversationally: ty
 - Build the Connections Center as a reusable connection registry with provider metadata, current status, and adapter-ready action callbacks. The initial buttons demonstrate the intended authorization surface without embedding provider secrets in the browser.
 - Use CSS for the motion system: orbital rings, signal bars, scanline texture, status dots, hover lift, and subtle glow. Voice Mode accelerates the orb aura, activates a microphone pulse, and changes the core label to listening.
 - Add `/manus-routes.json` for the single `/` route and preserve the existing server/database scaffolding for later persistence and OAuth callbacks.
+- Preserve the starter's Manus OAuth/session implementation as the only authentication system. The dashboard renders a secure sign-in state for logged-out visitors and only mounts private command-center UI after `auth.me` resolves an authenticated user.
+- Treat the existing `users` row keyed by Manus `openId` as the multi-user profile boundary. `profile.update` is a protected server mutation that can edit only the current user's display name; email, role, openId, and sign-in timestamps remain server-owned.
 
 ## Project structure
 
-- `client/src/pages/Home.tsx` — dashboard composition, mock data, action state, conversational command handling, approval and connection interactions.
+- `client/src/pages/Home.tsx` — authenticated dashboard composition, user-scoped profile dialog, mock data, action state, conversational command handling, approval and connection interactions.
 - `client/src/index.css` — dark command-center visual system, responsive layout, orbital animation, terminal styles, and component primitives.
 - `client/src/App.tsx` — dark-only theme shell and routing.
 - `public/manus-routes.json` — published route manifest.
-- `server/` and `drizzle/` — retained starter backend/database foundation for future user-scoped connection records, audit logs, and OAuth callback persistence.
+- `server/` and `drizzle/` — retained starter backend/database foundation with Manus OAuth, protected tRPC procedures, and user-scoped profile persistence for future connection records, audit logs, and OAuth callback persistence.
 
 ## Design direction
 

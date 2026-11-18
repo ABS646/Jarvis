@@ -88,4 +88,14 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
+export async function updateUserProfile(openId: string, name: string) {
+  const db = await getDb();
+  if (!db) {
+    throw new Error("Database is not available");
+  }
+
+  await db.update(users).set({ name }).where(eq(users.openId, openId));
+  return getUserByOpenId(openId);
+}
+
 // TODO: add feature queries here as your schema grows.

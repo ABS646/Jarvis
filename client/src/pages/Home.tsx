@@ -29,6 +29,7 @@ import {
   Radio,
   RefreshCw,
   Rocket,
+  Save,
   Search,
   Send,
   Server,
@@ -44,6 +45,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { startLogin } from "@/const";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { trpc } from "@/lib/trpc";
 
 type LogKind = "user" | "system" | "info" | "success" | "wait" | "error";
 type View = "Command center" | "Connections" | "Approvals" | "Activity";
@@ -142,6 +146,15 @@ function StatusPill({ children, tone = "online" }: { children: React.ReactNode; 
 }
 
 export default function Home() {
+  const auth = useAuth();
+  const profileUpdate = trpc.profile.update.useMutation({
+    onSuccess: async () => {
+      await auth.refresh();
+      setProfileOpen(false);
+      flash("Profile updated", "Your J.A.R.V.I.S operator profile is saved.");
+    },
+    onError: (error: { message: string }) => flash("Profile update failed", error.message),
+  });
   const [now, setNow] = useState(new Date());
   const [view, setView] = useState<View>("Command center");
   const [logs, setLogs] = useState<LogEntry[]>(initialLogs);
@@ -158,10 +171,16 @@ export default function Home() {
   const [processing, setProcessing] = useState(false);
   const [lastAction, setLastAction] = useState("SYSTEM READY");
   const [notification, setNotification] = useState<{ title: string; detail: string } | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileName, setProfileName] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const terminalRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const processingRef = useRef(false);
+
+  useEffect(() => {
+    setProfileName(auth.user?.name ?? "");
+  }, [auth.user?.name]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
@@ -325,6 +344,14 @@ export default function Home() {
     flash(approved ? "Approval recorded" : "Action rejected", approved ? `${item.action} is cleared for the connected adapter.` : "The workflow remains paused and no action was sent.");
   };
 
+  if (auth.loading) {
+    return <div className="auth-screen"><div className="auth-card loading-card"><div className="auth-orb"><span>J</span></div><span className="eyebrow accent-eyebrow">AUTHENTICATING OPERATOR</span><h1>Connecting to J.A.R.V.I.S</h1><p>Verifying your secure operator session...</p></div></div>;
+  }
+
+  if (!auth.isAuthenticated || !auth.user) {
+    return <div className="auth-screen"><div className="auth-card"><div className="auth-orb"><span>J</span></div><div className="eyebrow accent-eyebrow"><span className="eyebrow-line" />SECURE OPERATOR ACCESS</div><h1>J.A.R.V.I.S <em>awaits.</em></h1><p>Sign in with your Manus account to access your private command center, connections, approvals, and profile.</p><button className="auth-login-button" onClick={() => startLogin()}><ShieldCheck size={16} /> Sign in to continue <ArrowUpRight size={15} /></button><span className="auth-footnote"><LockKeyhole size={13} /> Your dashboard is scoped to your authenticated profile.</span></div></div>;
+  }
+
   return (
     <div className="jarvis-app">
       <div className="ambient ambient-one" />
@@ -337,7 +364,7 @@ export default function Home() {
         <div className="clock-block"><strong>{formatTime.call(null)}</strong><span>{formatDate.call(null)}</span></div>
         <StatusPill>System Status: Online</StatusPill>
         <button className="icon-button" aria-label="Notifications" onClick={() => { setView("Activity"); document.getElementById("activity")?.scrollIntoView({ behavior: "smooth" }); }}><Bell size={17} /><span className="notification-badge">3</span></button>
-        <button className="avatar-button" aria-label="Open operator profile">OR</button>
+        <button className="avatar-button" aria-label="Open operator profile" onClick={() => setProfileOpen(true)}>{(auth.user.name ?? "CEO").split(" ").map((part: string) => part[0]).join("").slice(0, 2).toUpperCase()}</button>
       </header>
 
       <div className="workspace">
@@ -416,6 +443,7 @@ export default function Home() {
         </main>
       </div>
       {notification && <div className="toast-notification"><div className="toast-icon"><Check size={15} /></div><div><strong>{notification.title}</strong><span>{notification.detail}</span></div><button aria-label="Dismiss notification" onClick={() => setNotification(null)}><X size={15} /></button></div>}
+      {profileOpen && <div className="profile-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setProfileOpen(false); }}><section className="profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-title"><div className="profile-dialog-top"><div><div className="eyebrow accent-eyebrow">OPERATOR PROFILE</div><h2 id="profile-title">Your J.A.R.V.I.S identity</h2></div><button className="profile-close" aria-label="Close profile" onClick={() => setProfileOpen(false)}><X size={17} /></button></div><div className="profile-identity"><div className="profile-avatar">{(auth.user.name ?? "CEO").split(" ").map((part: string) => part[0]).join("").slice(0, 2).toUpperCase()}</div><div><strong>{auth.user.email ?? "Authenticated operator"}</strong><span>{auth.user.role === "admin" ? "Administrator" : "Operator"} · {auth.user.loginMethod ?? "Manus account"}</span></div></div><label className="profile-field"><span>Display name</span><input value={profileName} onChange={event => setProfileName(event.target.value)} placeholder="CEO" maxLength={80} /></label><div className="profile-readonly"><div><span>Account email</span><strong>{auth.user.email ?? "Not provided"}</strong></div><div><span>Access role</span><strong>{auth.user.role === "admin" ? "Administrator" : "Operator"}</strong></div><div><span>Account ID</span><strong>{auth.user.openId.slice(0, 12)}…</strong></div></div><div className="profile-dialog-footer"><button className="logout-button" onClick={() => auth.logout()}><Unplug size={14} /> Sign out</button><button className="save-profile-button" disabled={profileUpdate.isPending || !profileName.trim()} onClick={() => profileUpdate.mutate({ name: profileName.trim() })}><Save size={14} /> {profileUpdate.isPending ? "Saving..." : "Save profile"}</button></div></section></div>}
     </div>
   );
 }
