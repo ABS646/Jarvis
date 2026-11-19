@@ -227,6 +227,7 @@ export default function Home() {
     { id: "task-deploy", title: "J.A.R.V.I.S self-build protocol", detail: "Repository and deployment plan can be prepared from an approved task.", stage: "Reasoning", progress: 28, approvalRequired: true },
   ]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const chatInputRef = useRef<HTMLInputElement>(null);
   const terminalRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const voiceCallRef = useRef(false);
@@ -298,12 +299,24 @@ export default function Home() {
       }
     };
     recognition.onerror = event => {
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        voiceCallRef.current = false;
+        setVoiceCallMode(false);
+        flash("Microphone permission blocked", "Open J.A.R.V.I.S in Chrome, allow microphone access, then try Voice again.");
+      }
       setListening(false);
       setLastAction("SYSTEM READY");
       addLog("error", `Voice input error${event.error ? `: ${event.error}` : "."}`);
       flash("Voice input interrupted", "Check microphone permission and try Voice Mode again.");
     };
     recognition.onend = () => {
+      if (voiceCallRef.current) {
+        window.setTimeout(() => {
+          if (!voiceCallRef.current || recognitionRef.current !== recognition) return;
+          try { recognition.start(); } catch { /* browser is already restarting */ }
+        }, 180);
+        return;
+      }
       setListening(false);
       recognitionRef.current = null;
       setLastAction(previous => previous === "LISTENING FOR INSTRUCTION" ? "SYSTEM READY" : previous);
@@ -321,7 +334,7 @@ export default function Home() {
       const typing = target.tagName === "INPUT" || target.tagName === "TEXTAREA";
       if ((event.key === "/" && !typing) || ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k")) {
         event.preventDefault();
-        inputRef.current?.focus();
+        chatInputRef.current?.focus();
       }
       if ((event.key.toLowerCase() === "c") && !typing) {
         setView("Connections");
@@ -529,7 +542,7 @@ export default function Home() {
     }
   };
 
-  const submitCommand = () => submitText(command);
+  const submitCommand = () => submitText(command || "Please review the attached files and tell me what you find.");
 
   const toggleListening = () => {
     if (!voiceSupported) {
@@ -624,6 +637,11 @@ export default function Home() {
             <div className="header-actions"><span className="shortcut-hint"><kbd>/</kbd> Focus command</span><button className="ghost-button" onClick={() => { setLogs(initialLogs); flash("Terminal reset", "System telemetry returned to the initial snapshot."); }}><RefreshCw size={15} /> Reset sim</button></div>
           </div>
 
+          <section id="assistant-chat" className="assistant-shell glass-panel">
+            <div className="assistant-shell-head"><div><div className="eyebrow accent-eyebrow"><span className="eyebrow-line" />J.A.R.V.I.S AI ASSISTANT</div><h2>What can I help you with, CEO?</h2><p>Chat naturally. I can explain, plan, code, research, organize work, and prepare approved actions.</p></div><div className="assistant-shell-state"><span className="pulse-dot" /> ONLINE</div></div>
+            <div className="assistant-chat-body"><aside className="assistant-session-rail"><button className="assistant-new-chat" onClick={startNewChat}><Sparkles size={14} /> New chat</button><div className="assistant-session-label"><span>YOUR CHATS</span><small>{chatSessions.filter(session => !session.archived).length}</small></div><div className="assistant-session-list">{chatSessions.filter(session => !session.archived).slice().sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 8).map(session => <button key={session.id} className={`assistant-session ${session.id === currentChatId ? "active" : ""}`} onClick={() => openChat(session)}><strong>{session.title || "Untitled chat"}</strong><span>{session.messages.filter(message => message.role === "user").length} prompts</span></button>)}</div></aside><div className="assistant-conversation"><div className="assistant-messages">{chatHistory.map((message, index) => <div className={`assistant-message ${message.role}`} key={`primary-${message.role}-${index}`}><div className="assistant-message-avatar">{message.role === "assistant" ? "J" : "CEO"}</div><div className="assistant-message-content"><span>{message.role === "assistant" ? "J.A.R.V.I.S" : "YOU"}</span><p>{message.content}</p></div></div>)}{processing && <div className="assistant-message assistant"><div className="assistant-message-avatar">J</div><div className="assistant-message-content thinking-bubble"><span>J.A.R.V.I.S · THINKING</span><p><i /><i /><i /></p></div></div>}</div><div className="assistant-composer"><div className="assistant-attachment-row">{attachments.length > 0 ? attachments.map(item => <div className="assistant-attachment" key={item.id}>{item.previewUrl && <img src={item.previewUrl} alt="" />}{!item.previewUrl && <Upload size={13} />}<span>{item.name}</span><button onClick={() => removeAttachment(item.id)} aria-label={`Remove ${item.name}`}><X size={12} /></button></div>) : <span className="assistant-attachment-hint"><Paperclip size={13} /> Add an image, document, audio, or video</span>}</div><div className="assistant-input-row"><input ref={chatInputRef} value={command} onChange={event => setCommand(event.target.value)} onKeyDown={event => { if (event.key === "Enter") submitCommand(); }} placeholder="Message J.A.R.V.I.S..." aria-label="Message J.A.R.V.I.S" /><button className="assistant-attach-button" onClick={() => attachmentInputRef.current?.click()} title="Attach image or file"><Paperclip size={17} /><span>Attach</span></button><input ref={attachmentInputRef} className="hidden-file-input" type="file" multiple accept="image/*,audio/*,video/*,.pdf,.txt,.md,.csv" onChange={handleAttachmentSelection} /><button className={`assistant-voice-button ${listening ? "active" : ""}`} onClick={toggleListening} title={voiceSupported ? "Speak to J.A.R.V.I.S" : "Microphone permission or speech recognition is unavailable"}><Mic size={17} /><span>{listening ? "Listening" : "Voice"}</span></button><button className="assistant-send-button" onClick={submitCommand} disabled={processing || (!command.trim() && !attachments.length)}><Send size={17} /><span>Send</span></button></div><div className="assistant-composer-note"><span>{voiceSupported ? "Voice input ready when microphone permission is allowed" : "For voice on Android, open this page in Chrome and allow microphone access"}</span><button onClick={toggleVoiceNote}><Radio size={12} /> {recordingVoiceNote ? "Stop note" : "Voice note"}</button><button onClick={toggleVoiceCall}>{voiceCallMode ? <PhoneOff size={12} /> : <Phone size={12} />} {voiceCallMode ? "End call" : "Voice call"}</button></div></div></div></div>
+          </section>
+
           <section className="metrics-grid" aria-label="System metrics">
             <div className="metric-card"><div className="metric-top"><span>LEADS DISCOVERED</span><Inbox size={15} /></div><strong>128</strong><span className="metric-change positive">+18.4% <span>vs last week</span></span><div className="sparkline cyan"><i /><i /><i /><i /><i /><i /><i /><i /><i /></div></div>
             <div className="metric-card"><div className="metric-top"><span>MESSAGES SENT</span><Send size={15} /></div><strong>64</strong><span className="metric-change positive">+12.6% <span>this month</span></span><div className="sparkline blue"><i /><i /><i /><i /><i /><i /><i /><i /><i /></div></div>
@@ -637,7 +655,7 @@ export default function Home() {
             <div className="ops-card project-card"><div className="ops-card-head"><div><div className="eyebrow">PROJECT RADAR</div><h3>Still going</h3></div><Layers3 size={18} /></div><div className="project-row"><span className="project-status violet" /><div><strong>Content pipeline</strong><span>3 drafts awaiting review</span></div><small>72%</small></div><div className="project-row"><span className="project-status cyan" /><div><strong>Outreach engine</strong><span>12 leads staged for approval</span></div><small>54%</small></div><div className="project-row"><span className="project-status amber" /><div><strong>Production deploy</strong><span>Build #184 ready to promote</span></div><small>88%</small></div></div>
           </section>
 
-          <div className="hero-grid">
+          <div className="hero-grid legacy-console">
             <section className={`orb-panel glass-panel ${listening ? "listening" : ""} ${processing ? "processing" : ""}`}>
               <div className="panel-topline"><span className="panel-index">01</span><span>CORE INTERFACE</span><span className="topline-right"><Radio size={13} /> {processing ? "EXECUTING" : listening ? "LISTENING" : "STANDBY"}</span></div>
               <div className="orb-stage">
@@ -651,7 +669,7 @@ export default function Home() {
               </div>
               <div className="composer-wrap">
                 <div className="composer-label"><span>COMMAND INPUT</span><span><kbd>ENTER</kbd> EXECUTE</span></div>
-                <div className="command-composer"><input ref={inputRef} value={command} onChange={event => setCommand(event.target.value)} onKeyDown={event => { if (event.key === "Enter") submitCommand(); }} placeholder="Type a command or speak..." /><button className="composer-icon-button" onClick={() => attachmentInputRef.current?.click()} title="Attach an image, document, audio, or video"><Paperclip size={15} /></button><input ref={attachmentInputRef} className="hidden-file-input" type="file" multiple accept="image/*,audio/*,video/*,.pdf,.txt,.md,.csv" onChange={handleAttachmentSelection} /><button className={`voice-mode-button ${listening ? "active" : ""}`} onClick={toggleListening} aria-pressed={listening} title={voiceSupported ? "Start microphone input" : "Speech recognition is unavailable in this browser"}><Mic size={15} /><span>Voice Mode</span></button><button className={`voice-call-button ${voiceCallMode ? "active" : ""}`} onClick={toggleVoiceCall} aria-pressed={voiceCallMode} title="Start a hands-free voice conversation">{voiceCallMode ? <PhoneOff size={15} /> : <Phone size={15} />}<span>{voiceCallMode ? "End call" : "Voice call"}</span></button><button className="send-button" onClick={submitCommand} disabled={processing || !command.trim()}><Send size={16} /><span>Send</span></button></div>
+                <div className="command-composer"><input ref={inputRef} value={command} onChange={event => setCommand(event.target.value)} onKeyDown={event => { if (event.key === "Enter") submitCommand(); }} placeholder="Type a command or speak..." /><button className="composer-icon-button" onClick={() => attachmentInputRef.current?.click()} title="Attach an image, document, audio, or video"><Paperclip size={15} /></button><input ref={attachmentInputRef} className="hidden-file-input" type="file" multiple accept="image/*,audio/*,video/*,.pdf,.txt,.md,.csv" onChange={handleAttachmentSelection} /><button className={`voice-mode-button ${listening ? "active" : ""}`} onClick={toggleListening} aria-pressed={listening} title={voiceSupported ? "Start microphone input" : "Speech recognition is unavailable in this browser"}><Mic size={15} /><span>Voice Mode</span></button><button className={`voice-call-button ${voiceCallMode ? "active" : ""}`} onClick={toggleVoiceCall} aria-pressed={voiceCallMode} title="Start a hands-free voice conversation">{voiceCallMode ? <PhoneOff size={15} /> : <Phone size={15} />}<span>{voiceCallMode ? "End call" : "Voice call"}</span></button><button className="send-button" onClick={submitCommand} disabled={processing || (!command.trim() && !attachments.length)}><Send size={16} /><span>Send</span></button></div>
                 {attachments.length > 0 && <div className="attachment-tray">{attachments.map(item => <div className="attachment-chip" key={item.id}>{item.previewUrl && <img src={item.previewUrl} alt="" />}{!item.previewUrl && <Upload size={12} />}<span>{item.name}</span><button onClick={() => removeAttachment(item.id)} aria-label={`Remove ${item.name}`}><X size={12} /></button></div>)}</div>}
                 <div className="composer-tools"><button onClick={toggleVoiceNote} className={`voice-note-button ${recordingVoiceNote ? "recording" : ""}`}><Radio size={12} /> {recordingVoiceNote ? "Stop voice note" : "Record voice note"}</button><span>{voiceCallMode ? "LIVE VOICE CHANNEL · J.A.R.V.I.S IS LISTENING" : "Attach evidence or start a hands-free conversation"}</span></div>
                 <div className="composer-foot"><span><span className="tiny-green-dot" /> Secure operator channel</span><span>Press <kbd>/</kbd> anywhere to focus</span></div>
@@ -666,7 +684,7 @@ export default function Home() {
             </section>
           </div>
 
-          <section id="conversation" className="conversation-panel glass-panel">
+          <section id="conversation" className="conversation-panel glass-panel legacy-conversation">
             <div className="conversation-head"><div><div className="eyebrow accent-eyebrow"><span className="eyebrow-line" />CONVERSATION CHANNEL</div><h2>Talk to J.A.R.V.I.S</h2><p>Your private chat memory is saved in this browser and stays user-scoped.</p></div><div className="conversation-head-actions"><button className="new-chat-button" onClick={startNewChat}><Sparkles size={14} /> New chat</button><button className={`voice-profile-button ${voiceRepliesEnabled ? "active" : ""}`} onClick={() => setVoiceRepliesEnabled(previous => !previous)}>{voiceRepliesEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />} <span>REGAL ANIME VOICE</span><small>{voiceRepliesEnabled ? "ON" : "OFF"}</small></button></div></div>
             <div className="conversation-layout"><aside className="chat-memory-rail"><div className="memory-rail-title"><span>{showArchivedChats ? "ARCHIVED CHATS" : "PAST CHATS"}</span><button className="memory-archive-toggle" onClick={() => setShowArchivedChats(previous => !previous)}>{showArchivedChats ? "Active" : "Archived"} · {chatSessions.filter(session => Boolean(session.archived)).length}</button></div><button className="memory-new-chat" onClick={startNewChat}><Sparkles size={14} /> New chat</button><div className="memory-session-list">{chatSessions.filter(session => showArchivedChats ? Boolean(session.archived) : !session.archived).slice().sort((a, b) => b.updatedAt - a.updatedAt).map(session => <div key={session.id} className={`memory-session ${session.id === currentChatId ? "active" : ""}`}><button className="memory-session-main" onClick={() => openChat(session)}><strong>{session.title || "Untitled chat"}</strong><span>{new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short" }).format(session.updatedAt ? new Date(session.updatedAt) : new Date())} · {session.messages.filter(message => message.role === "user").length} prompts</span></button><div className="memory-session-actions"><button onClick={() => archiveChat(session)} aria-label={`${session.archived ? "Restore" : "Archive"} ${session.title}`} title={session.archived ? "Restore chat" : "Archive chat"}><Archive size={12} /></button><button onClick={() => deleteChat(session)} aria-label={`Delete ${session.title}`} title="Delete chat"><Trash2 size={12} /></button></div></div>)}</div></aside><div className="conversation-messages">{chatHistory.map((message, index) => <div className={`conversation-message ${message.role}`} key={`${message.role}-${index}`}><div className="conversation-avatar">{message.role === "assistant" ? "J" : "CEO"}</div><div className="conversation-bubble"><span className="conversation-speaker">{message.role === "assistant" ? "J.A.R.V.I.S · REGAL ANIME VOICE" : "YOU · CEO"}</span><p>{message.content}</p></div></div>)}{processing && <div className="conversation-message assistant"><div className="conversation-avatar">J</div><div className="conversation-bubble thinking-bubble"><span className="conversation-speaker">J.A.R.V.I.S · THINKING</span><p><i /><i /><i /></p></div></div>}</div></div>
           </section>
