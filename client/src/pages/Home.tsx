@@ -109,7 +109,7 @@ type TaskItem = { id: string; title: string; detail: string; stage: TaskStage; p
 type LocalAttachment = { id: string; name: string; type: string; size: number; previewUrl?: string };
 type ChatSession = { id: string; title: string; updatedAt: number; messages: ChatMessage[]; archived?: boolean };
 
-const welcomeMessage: ChatMessage = { role: "assistant", content: "Good evening, CEO. I am online. Tell me what you want to build, investigate, or organize, and I will break it into clear steps." };
+const welcomeMessage: ChatMessage = { role: "assistant", content: "Hey Abubakar. I’m here and ready. How are you doing, and what do we have today?" };
 const loadChatSessions = (): ChatSession[] => {
   if (typeof window !== "undefined") {
     try {
@@ -502,6 +502,15 @@ export default function Home() {
     const trimmed = text.trim();
     if (!trimmed || processingRef.current) return;
     setCommand("");
+    if (/^(hi|hii|hey|hello|good morning|good afternoon|good evening)[!.?\s]*$/i.test(trimmed)) {
+      const nextMessages: ChatMessage[] = [...chatHistoryRef.current, { role: "user" as const, content: trimmed }, { role: "assistant" as const, content: "Hey Abubakar! I’m here and ready. How are you doing, and what do we have today?" }].slice(-24);
+      chatHistoryRef.current = nextMessages;
+      setChatHistory(nextMessages);
+      setHistory(previous => [trimmed, ...previous].slice(0, 5));
+      addLog("user", trimmed);
+      speakAssistant("Hey Abubakar! I’m here and ready. How are you doing, and what do we have today?");
+      return;
+    }
     setHistory(prev => [trimmed, ...prev].slice(0, 5));
     const taskId = `task-${Date.now()}`;
     setTasks(previous => [{ id: taskId, title: trimmed.slice(0, 52), detail: "J.A.R.V.I.S is converting your instruction into an actionable plan.", stage: "Reasoning" as const, progress: 18, approvalRequired: true }, ...previous].slice(0, 6));
