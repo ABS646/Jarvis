@@ -60,3 +60,12 @@ Interactions should feel like issuing a command to a calm, attentive co-pilot: c
 ## Future integration seam
 
 Real Gmail, GitHub, Vercel, lead-source, OpenAI, and video-service connectors should enter through provider-specific server routes or tRPC procedures. Connection records, provider account IDs, token references, and audit events belong in the managed database; browser code should only receive safe connection status and callback URLs. Secrets must be requested through protected environment/configuration flows rather than pasted into the UI or chat.
+
+
+## Dashboard IA redesign
+
+The dashboard is now a route-backed application shell rather than one long page. The left navigation groups Overview, AI Assistant, and Tasks & Workflows under Workspace; Leads & Outreach, Integrations, Video Studio, and Analytics under Operations; and Approval Center plus Settings under System. Each workspace renders its own focused page while preserving the authenticated Home shell and existing tRPC handlers.
+
+The redesign uses a restrained premium SaaS command platform direction: dark navy surfaces, cyan signal color, quieter borders, compact IBM Plex Mono telemetry labels, and larger Space Grotesk page hierarchy. The Overview is intentionally limited to status, key metrics, active workflows, approvals, recent activity, health, and quick actions. Assistant history and composer live on `/assistant`; integrations on `/integrations`; analytics on `/analytics`; and approval review on `/approvals`.
+
+The shell uses a desktop collapsible sidebar, sticky top bar, mobile drawer navigation, route-aware breadcrumbs, and responsive grids that collapse to single-column panels without horizontal overflow. Existing auth, profile editing, connector OAuth actions, assistant chat, voice controls, approval actions, and task preparation are preserved and reused. New workspace paths are registered in `client/src/App.tsx` and `public/manus-routes.json`.

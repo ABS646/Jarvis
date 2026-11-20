@@ -56,3 +56,15 @@
 - [ ] Enable the Manus GitHub connector and select a destination repository before pushing the project to the user's GitHub.
 - [ ] Configure a Vercel project/team deployment target and server-side environment variables before deploying outside Manus.
 - [ ] Commit and push the completed change to the canonical `origin/main` checkpoint.
+
+
+## Deliver the dashboard IA redesign
+
+- [x] Create a fixed, collapsible desktop sidebar and responsive mobile drawer with navigation for Overview, AI Assistant, Tasks & Workflows, Leads & Outreach, Integrations, Video Studio, Analytics, Approval Center, and Settings.
+- [x] Give each sidebar destination a dedicated route and synchronized public route-manifest entry; links open their corresponding workspace.
+- [x] Keep Overview minimal and focused on CEO greeting, system status, key metrics, recent activity, active workflows, pending approvals, health, and quick actions.
+- [x] Move assistant history, chat, attachments, voice controls, and composer into a dedicated AI Assistant workspace while preserving the existing protected assistant mutation and browser-local chat memory.
+- [x] Add dedicated workspaces for tasks/workflows, leads/outreach, integrations, video studio, analytics, approvals, and settings without replacing existing backend connections.
+- [x] Preserve explicit approval behavior: connected actions remain paused until the operator approves them, and approval, opt-out, audit, profile, and authentication behavior remains intact.
+- [x] Implement dark navy/cyan premium SaaS styling with reduced visual clutter, consistent cards, readable hierarchy, and Android-friendly responsive layout with no intentional horizontal overflow.
+- [x] Validate the redesigned application with `pnpm check`, `pnpm test`, and `pnpm build`.
