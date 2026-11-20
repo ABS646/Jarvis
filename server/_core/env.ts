@@ -19,4 +19,13 @@ export const ENV = {
   get instagramClientSecret() { return process.env.INSTAGRAM_CLIENT_SECRET ?? ""; },
   get tiktokClientKey() { return process.env.TIKTOK_CLIENT_KEY ?? ""; },
   get tiktokClientSecret() { return process.env.TIKTOK_CLIENT_SECRET ?? ""; },
+  // Compatibility flags are intentionally safe by default. Unsupported unsafe adapters
+  // remain unavailable even if an aggressive value is supplied at runtime.
+  get operatingMode() { return process.env.OPERATING_MODE === "aggressive" ? "aggressive" : "compliant"; },
+  get waTransport() { return process.env.WA_TRANSPORT === "baileys" ? "baileys" : "cloud"; },
+  get scraperMode() { return process.env.SCRAPER_MODE === "broad" ? "broad" : "strict"; },
+  get autoSend() { return process.env.AUTO_SEND === "true"; },
+  get followupMax() { return process.env.FOLLOWUP_MAX === "6" ? 6 : 3; },
+  get consentEnforce() { return process.env.CONSENT_ENFORCE !== "false"; },
+  get proxyPool() { return process.env.PROXY_POOL ?? ""; },
 };
