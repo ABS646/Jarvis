@@ -107,11 +107,26 @@ type Connection = {
   tone: string;
 };
 
-type ChatMessage = { role: "user" | "assistant"; content: string };
+type ChatContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string; detail?: "auto" | "low" | "high" } }
+  | { type: "file_url"; file_url: { url: string; mime_type?: string } };
+type ChatMessage = { role: "user" | "assistant"; content: string | ChatContentPart[] };
 type TaskStage = "Reasoning" | "Preparing" | "Awaiting approval" | "Approved" | "Complete";
 type TaskItem = { id: string; title: string; detail: string; stage: TaskStage; progress: number; approvalRequired: boolean };
-type LocalAttachment = { id: string; name: string; type: string; size: number; previewUrl?: string };
+type LocalAttachment = { id: string; name: string; type: string; size: number; dataUrl: string; previewUrl?: string };
 type ChatSession = { id: string; title: string; updatedAt: number; messages: ChatMessage[]; archived?: boolean };
+
+const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
+const readBlobAsDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(String(reader.result));
+  reader.onerror = () => reject(reader.error ?? new Error("Could not read attachment"));
+  reader.readAsDataURL(blob);
+});
+const chatMessageText = (content: ChatMessage["content"]) => typeof content === "string"
+  ? content
+  : content.filter(part => part.type === "text").map(part => part.type === "text" ? part.text : "").join("\n");
 
 const workspaceRoutes: Record<View, string> = {
   "Overview": "/",
@@ -276,10 +291,11 @@ export default function Home() {
 
   useEffect(() => {
     setChatSessions(previous => {
-      const firstUserMessage = chatHistory.find(message => message.role === "user")?.content.replace(/\n\n\[Evidence staged:[\s\S]*$/, "") || "New command session";
+      const firstUserMessage = chatMessageText(chatHistory.find(message => message.role === "user")?.content ?? "").replace(/\n\n\[Evidence (?:staged|attached):[\s\S]*$/, "") || "New command session";
+      const persistedMessages = chatHistory.map(message => ({ ...message, content: chatMessageText(message.content) }));
       const updated = previous.some(session => session.id === currentChatId)
-        ? previous.map(session => session.id === currentChatId ? { ...session, title: session.title === "New command session" ? firstUserMessage.slice(0, 46) : session.title, updatedAt: Date.now(), messages: chatHistory } : session)
-        : [{ id: currentChatId, title: firstUserMessage.slice(0, 46), updatedAt: Date.now(), messages: chatHistory }, ...previous];
+        ? previous.map(session => session.id === currentChatId ? { ...session, title: session.title === "New command session" ? firstUserMessage.slice(0, 46) : session.title, updatedAt: Date.now(), messages: persistedMessages } : session)
+        : [{ id: currentChatId, title: firstUserMessage.slice(0, 46), updatedAt: Date.now(), messages: persistedMessages }, ...previous];
       window.localStorage.setItem("jarvis-chat-sessions", JSON.stringify(updated.slice(0, 12)));
       return updated.slice(0, 12);
     });
@@ -440,11 +456,25 @@ export default function Home() {
     flash("Task approved", `${task.title} is cleared for preparation. External execution remains adapter-gated.`);
   };
 
-  const handleAttachmentSelection = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAttachmentSelection = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []).slice(0, 5);
-    const nextAttachments = files.map(file => ({ id: `${file.name}-${file.lastModified}`, name: file.name, type: file.type || "file", size: file.size, previewUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined }));
-    setAttachments(previous => [...previous, ...nextAttachments].slice(-5));
-    if (files.length) flash("Evidence staged", `${files.length} file${files.length === 1 ? "" : "s"} attached to the next command.`);
+    const acceptedFiles = files.filter(file => file.size <= MAX_ATTACHMENT_BYTES);
+    const rejectedCount = files.length - acceptedFiles.length;
+    try {
+      const nextAttachments = await Promise.all(acceptedFiles.map(async file => ({
+        id: `${file.name}-${file.lastModified}`,
+        name: file.name,
+        type: file.type || "application/octet-stream",
+        size: file.size,
+        dataUrl: await readBlobAsDataUrl(file),
+        previewUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined,
+      })));
+      setAttachments(previous => [...previous, ...nextAttachments].slice(-5));
+      if (nextAttachments.length) flash("Evidence staged", `${nextAttachments.length} file${nextAttachments.length === 1 ? "" : "s"} ready for J.A.R.V.I.S to inspect.`);
+      if (rejectedCount) flash("Some files were skipped", `Files must be 8 MB or smaller. ${rejectedCount} file${rejectedCount === 1 ? " was" : "s were"} not staged.`);
+    } catch {
+      flash("Attachment failed", "J.A.R.V.I.S could not read one of those files in this browser.");
+    }
     event.target.value = "";
   };
 
@@ -464,9 +494,14 @@ export default function Home() {
       const recorder = new MediaRecorder(stream);
       voiceNoteChunksRef.current = [];
       recorder.ondataavailable = event => { if (event.data.size) voiceNoteChunksRef.current.push(event.data); };
-      recorder.onstop = () => {
+      recorder.onstop = async () => {
         const blob = new Blob(voiceNoteChunksRef.current, { type: recorder.mimeType || "audio/webm" });
-        setAttachments(previous => [...previous, { id: `voice-${Date.now()}`, name: `voice-note-${new Date().toISOString().slice(11, 19).replaceAll(":", "-")}.webm`, type: blob.type, size: blob.size, previewUrl: URL.createObjectURL(blob) }].slice(-5));
+        if (blob.size <= MAX_ATTACHMENT_BYTES) {
+          const dataUrl = await readBlobAsDataUrl(blob);
+          setAttachments(previous => [...previous, { id: `voice-${Date.now()}`, name: `voice-note-${new Date().toISOString().slice(11, 19).replaceAll(":", "-")}.webm`, type: blob.type, size: blob.size, dataUrl, previewUrl: URL.createObjectURL(blob) }].slice(-5));
+        } else {
+          flash("Voice note too large", "Keep voice notes under 8 MB so J.A.R.V.I.S can inspect them.");
+        }
         stream.getTracks().forEach(track => track.stop());
         setRecordingVoiceNote(false);
         flash("Voice note staged", "Attach it to a command when you are ready.");
@@ -540,12 +575,15 @@ export default function Home() {
       return next;
     });
   };
+  const buildAttachmentPart = (attachment: LocalAttachment): ChatContentPart => attachment.type.startsWith("image/")
+    ? { type: "image_url", image_url: { url: attachment.dataUrl, detail: "auto" } }
+    : { type: "file_url", file_url: { url: attachment.dataUrl, mime_type: attachment.type } };
 
   const submitText = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || processingRef.current) return;
     setCommand("");
-    if (/^(hi|hii|hey|hello|good morning|good afternoon|good evening)[!.?\s]*$/i.test(trimmed)) {
+    if (!attachments.length && /^(hi|hii|hey|hello|good morning|good afternoon|good evening)[!.?\s]*$/i.test(trimmed)) {
       const nextMessages: ChatMessage[] = [...chatHistoryRef.current, { role: "user" as const, content: trimmed }, { role: "assistant" as const, content: "Hey Abubakar! I’m here and ready. How are you doing, and what do we have today?" }].slice(-24);
       chatHistoryRef.current = nextMessages;
       setChatHistory(nextMessages);
@@ -558,8 +596,11 @@ export default function Home() {
     const taskId = `task-${Date.now()}`;
     setTasks(previous => [{ id: taskId, title: trimmed.slice(0, 52), detail: "J.A.R.V.I.S is converting your instruction into an actionable plan.", stage: "Reasoning" as const, progress: 18, approvalRequired: true }, ...previous].slice(0, 6));
     addLog("user", trimmed);
-    const attachmentSummary = attachments.length ? `\n\n[Evidence staged: ${attachments.map(item => `${item.name} (${item.type})`).join(", ")}]` : "";
-    const nextMessages: ChatMessage[] = [...chatHistoryRef.current, { role: "user" as const, content: `${trimmed}${attachmentSummary}` }].slice(-24);
+    const attachmentSummary = attachments.length ? `\n\n[Evidence attached: ${attachments.map(item => `${item.name} (${item.type})`).join(", ")}]` : "";
+    const userContent: ChatMessage["content"] = attachments.length
+      ? [{ type: "text", text: `${trimmed}${attachmentSummary}` }, ...attachments.map(buildAttachmentPart)]
+      : `${trimmed}${attachmentSummary}`;
+    const nextMessages: ChatMessage[] = [...chatHistoryRef.current, { role: "user" as const, content: userContent }].slice(-24);
     chatHistoryRef.current = nextMessages;
     setChatHistory(nextMessages);
     setAttachments([]);
@@ -661,8 +702,8 @@ export default function Home() {
         </aside>
         <div className="ai-conversation">
           <div className="ai-conversation-head"><div><span className="section-eyebrow">CURRENT THREAD</span><h2>{chatSessions.find(session => session.id === currentChatId)?.title || "New command session"}</h2></div><button className={`secondary-action ${voiceRepliesEnabled ? "selected" : ""}`} onClick={toggleVoiceReplies}>{voiceRepliesEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />} Voice replies {voiceRepliesEnabled ? "on" : "off"}</button></div>
-          <div className="ai-messages">{chatHistory.map((message, index) => <div className={`ai-message ${message.role}`} key={`${message.role}-${index}`}><div className="ai-avatar">{message.role === "assistant" ? "J" : "CEO"}</div><div className="ai-bubble"><span>{message.role === "assistant" ? "J.A.R.V.I.S" : "YOU"}</span><p>{message.content}</p></div></div>)}{processing && <div className="ai-message assistant"><div className="ai-avatar">J</div><div className="ai-bubble thinking-bubble"><span>J.A.R.V.I.S · THINKING</span><p><i /><i /><i /></p></div></div>}</div>
-          <div className="ai-composer"><div className="ai-attachments">{attachments.length ? attachments.map(item => <div className="attachment-chip" key={item.id}>{item.previewUrl ? <img src={item.previewUrl} alt="" /> : <Upload size={13} />}<span>{item.name}</span><button onClick={() => removeAttachment(item.id)} aria-label={`Remove ${item.name}`}><X size={12} /></button></div>) : <span><Paperclip size={13} /> Attach evidence, files, or a voice note</span>}</div><div className="ai-input-row"><input ref={chatInputRef} value={command} onChange={event => setCommand(event.target.value)} onKeyDown={event => { if (event.key === "Enter") submitCommand(); }} placeholder="Message J.A.R.V.I.S..." aria-label="Message J.A.R.V.I.S" /><button className="secondary-action" onClick={() => attachmentInputRef.current?.click()}><Paperclip size={15} /><span>Attach</span></button><input ref={attachmentInputRef} className="hidden-file-input" type="file" multiple accept="image/*,audio/*,video/*,.pdf,.txt,.md,.csv" onChange={handleAttachmentSelection} /><button className={`secondary-action ${listening ? "selected" : ""}`} onClick={toggleListening}><Mic size={15} /><span>{listening ? "Listening" : "Voice"}</span></button><button className="primary-action" onClick={submitCommand} disabled={processing || (!command.trim() && !attachments.length)}><Send size={15} /><span>Send</span></button></div><div className="ai-composer-footer"><span>{voiceSupported ? "Voice input ready" : "Open in Chrome on Android to enable voice input"}</span><button onClick={toggleVoiceNote}><Radio size={12} /> {recordingVoiceNote ? "Stop note" : "Voice note"}</button><button onClick={toggleVoiceCall}>{voiceCallMode ? <PhoneOff size={12} /> : <Phone size={12} />} {voiceCallMode ? "End call" : "Voice call"}</button></div></div>
+          <div className="ai-messages">{chatHistory.map((message, index) => <div className={`ai-message ${message.role}`} key={`${message.role}-${index}`}><div className="ai-avatar">{message.role === "assistant" ? "J" : "CEO"}</div><div className="ai-bubble"><span>{message.role === "assistant" ? "J.A.R.V.I.S" : "YOU"}</span><p>{chatMessageText(message.content)}</p>{Array.isArray(message.content) && message.content.some(part => part.type !== "text") && <small className="message-attachment-note">Attachment content included for analysis</small>}</div></div>)}{processing && <div className="ai-message assistant"><div className="ai-avatar">J</div><div className="ai-bubble thinking-bubble"><span>J.A.R.V.I.S · THINKING</span><p><i /><i /><i /></p></div></div>}</div>
+          <div className="ai-composer"><div className="ai-attachments">{attachments.length ? attachments.map(item => <div className="attachment-chip" key={item.id}>{item.previewUrl ? <img src={item.previewUrl} alt="" /> : <Upload size={13} />}<span>{item.name}</span><button onClick={() => removeAttachment(item.id)} aria-label={`Remove ${item.name}`}><X size={12} /></button></div>) : <span><Paperclip size={13} /> Attach evidence, files, or a voice note</span>}</div><div className="ai-input-row"><input ref={chatInputRef} value={command} onChange={event => setCommand(event.target.value)} onKeyDown={event => { if (event.key === "Enter") submitCommand(); }} placeholder="Message J.A.R.V.I.S..." aria-label="Message J.A.R.V.I.S" /><button className="secondary-action" onClick={() => attachmentInputRef.current?.click()}><Paperclip size={15} /><span>Attach</span></button><input ref={attachmentInputRef} className="hidden-file-input" type="file" multiple accept="image/*,audio/*,video/*,.pdf,.txt,.md,.csv,.json,.xml,.html,.doc,.docx,.xls,.xlsx,.ppt,.pptx" onChange={handleAttachmentSelection} /><button className={`secondary-action ${listening ? "selected" : ""}`} onClick={toggleListening}><Mic size={15} /><span>{listening ? "Listening" : "Voice"}</span></button><button className="primary-action" onClick={submitCommand} disabled={processing || (!command.trim() && !attachments.length)}><Send size={15} /><span>Send</span></button></div><div className="ai-composer-footer"><span>{voiceSupported ? "Voice input ready" : "Open in Chrome on Android to enable voice input"}</span><button onClick={toggleVoiceNote}><Radio size={12} /> {recordingVoiceNote ? "Stop note" : "Voice note"}</button><button onClick={toggleVoiceCall}>{voiceCallMode ? <PhoneOff size={12} /> : <Phone size={12} />} {voiceCallMode ? "End call" : "Voice call"}</button></div></div>
         </div>
       </div>
     </section>
@@ -726,7 +767,7 @@ export default function Home() {
   }
 
   if (!auth.isAuthenticated || !auth.user) {
-    return <div className="auth-screen"><div className="auth-card"><div className="auth-orb"><span>J</span></div><div className="eyebrow accent-eyebrow"><span className="eyebrow-line" />SECURE OPERATOR ACCESS</div><h1>J.A.R.V.I.S <em>awaits.</em></h1><p>Sign in with your Manus account to access your private command center, connections, approvals, and profile.</p><button className="auth-login-button" onClick={() => startLogin()}><ShieldCheck size={16} /> Sign in to continue <ArrowUpRight size={15} /></button><span className="auth-footnote"><LockKeyhole size={13} /> Your dashboard is scoped to your authenticated profile.</span></div></div>;
+    return <div className="auth-screen"><div className="auth-card"><div className="auth-orb"><span>J</span></div><div className="eyebrow accent-eyebrow"><span className="eyebrow-line" />SECURE OPERATOR ACCESS</div><h1>J.A.R.V.I.S <em>awaits.</em></h1><p>Sign in with your Manus account to access your private command center, connections, approvals, and profile. Access is restricted to the configured owner account.</p><button className="auth-login-button" onClick={() => startLogin()}><ShieldCheck size={16} /> Sign in to continue <ArrowUpRight size={15} /></button><span className="auth-footnote"><LockKeyhole size={13} /> Only the configured owner account can use this dashboard.</span></div></div>;
   }
 
   return (

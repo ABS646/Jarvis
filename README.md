@@ -13,6 +13,12 @@ Start with the Webdev skill's default-template guide. Platform login, storage, p
 
 Platform configuration is readable and editable through `webdev.config`. Default settings are initial values, not enforced constraints. The agent may modify the files, commands and configuration or follow the flexible guide for another stack.
 
+## Owner-only access
+
+Set `OWNER_OPEN_ID` to the Open ID of the single Manus account that should use this instance. All protected tRPC procedures, including assistant chat, profile, connectors, and administrative routes, fail closed unless the authenticated session matches that value. Keep it in the server environment or project secret store; never put it in client code.
+
+The assistant accepts bounded browser attachments up to 8 MB each, including images, PDFs, text and structured documents, audio, video, and recorded voice notes. The active message sends the file content to the multimodal reasoning adapter; browser chat history persists only the readable text and never stores the large data payload. External actions still require an authorized connection and explicit approval.
+
 ## Operating mode and safety
 
 The server recognizes the following environment flags with safe defaults:
