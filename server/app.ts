@@ -6,7 +6,7 @@ import { appRouter } from "./routers";
 import { createContext } from "./_core/context";
 import { sdk } from "./_core/sdk";
 import { processNextBackgroundJob } from "./worker";
-import { serveStatic } from "./_core/vite";
+import { serveStatic } from "./_core/static";
 
 type AppOptions = {
   serveFrontend?: boolean;
