@@ -10,7 +10,7 @@ export const ENV = {
   get forgeApiUrl() { return process.env.MANUS_API_URL ?? ""; },
   get forgeApiKey() { return process.env.MANUS_API_KEY ?? ""; },
   get publicAppUrl() { return process.env.PUBLIC_APP_URL ?? ""; },
-  get connectorEncryptionKey() { return process.env.CONNECTOR_ENCRYPTION_KEY ?? process.env.MANUS_JWT_SECRET ?? ""; },
+  get connectorEncryptionKey() { return process.env.CONNECTOR_ENCRYPTION_KEY ?? ""; },
   get githubClientId() { return process.env.GITHUB_CLIENT_ID ?? ""; },
   get githubClientSecret() { return process.env.GITHUB_CLIENT_SECRET ?? ""; },
   get vercelClientId() { return process.env.VERCEL_CLIENT_ID ?? ""; },

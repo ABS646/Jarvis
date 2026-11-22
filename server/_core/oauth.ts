@@ -84,6 +84,8 @@ export function registerOAuthRoutes(app: Express) {
     try {
       const connectorState = await verifyConnectorState(state);
       if (connectorState.provider !== provider) throw new Error("Connector state provider mismatch");
+      const sessionUser = await sdk.authenticateRequest(req);
+      if (!sessionUser || sessionUser.openId !== connectorState.openId) throw new Error("Connector OAuth state is not bound to the active session");
       const token = await exchangeCode(provider, code, connectorState.redirectUri, connectorState.codeVerifier);
       const identity = await fetchProviderIdentity(provider, token.accessToken);
       const user = await db.getUserByOpenId(connectorState.openId);
