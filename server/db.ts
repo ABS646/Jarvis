@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { activityEvents, approvalRequests, backgroundJobs, InsertActivityEvent, InsertApprovalRequest, InsertBackgroundJob, InsertServiceConnection, InsertUser, InsertWorkflowTask, serviceConnections, users, workflowTasks } from "../drizzle/schema";
+import { activityEvents, approvalRequests, backgroundJobs, environmentSecrets, InsertActivityEvent, InsertApprovalRequest, InsertBackgroundJob, InsertEnvironmentSecret, InsertServiceConnection, InsertUser, InsertWorkflowTask, serviceConnections, users, workflowTasks } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -221,4 +221,22 @@ export async function decideApprovalRequest(id: number, userId: number, status: 
   if (existing[0].status !== "pending") return existing[0];
   await db.update(approvalRequests).set({ status, decidedAt: new Date(), executionStatus: "not_started" }).where(and(eq(approvalRequests.id, id), eq(approvalRequests.userId, userId), eq(approvalRequests.status, "pending")));
   return (await db.select().from(approvalRequests).where(and(eq(approvalRequests.id, id), eq(approvalRequests.userId, userId))).limit(1))[0];
+}
+
+export async function listEnvironmentSecrets(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  return db.select().from(environmentSecrets).where(eq(environmentSecrets.userId, userId)).orderBy(asc(environmentSecrets.name));
+}
+
+export async function upsertEnvironmentSecret(values: InsertEnvironmentSecret) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const existing = await db.select().from(environmentSecrets).where(and(eq(environmentSecrets.userId, values.userId), eq(environmentSecrets.name, values.name))).limit(1);
+  if (existing[0]) {
+    await db.update(environmentSecrets).set({ encryptedValue: values.encryptedValue }).where(and(eq(environmentSecrets.id, existing[0].id), eq(environmentSecrets.userId, values.userId)));
+    return (await db.select().from(environmentSecrets).where(eq(environmentSecrets.id, existing[0].id)).limit(1))[0];
+  }
+  await db.insert(environmentSecrets).values(values);
+  return (await db.select().from(environmentSecrets).where(and(eq(environmentSecrets.userId, values.userId), eq(environmentSecrets.name, values.name))).limit(1))[0];
 }

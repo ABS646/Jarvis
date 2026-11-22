@@ -172,6 +172,7 @@ const initialConnections: Connection[] = [
   { id: "github", label: "GitHub", description: "Repos, branches & pull requests", meta: "Provider setup required", status: "Setup required", icon: Github, tone: "violet" },
   { id: "vercel", label: "Vercel", description: "Projects, builds & deployments", meta: "Provider setup required", status: "Setup required", icon: Globe2, tone: "slate" },
   { id: "linkedin", label: "LinkedIn", description: "Lead discovery & prospect lists", meta: "No supported adapter configured", status: "Setup required", icon: Linkedin, tone: "blue" },
+  { id: "apify", label: "Apify", description: "Actor runs & lead discovery", meta: "API token required", status: "Setup required", icon: Code2, tone: "amber" },
   { id: "openai", label: "Managed reasoning", description: "Reasoning, copy & structured output", meta: "Provided by the application runtime", status: "Connected", icon: Sparkles, tone: "mint" },
   { id: "video", label: "Video stack", description: "Generate, review & publish content", meta: "No video provider configured", status: "Setup required", icon: Video, tone: "amber" },
 ];
@@ -187,6 +188,7 @@ const connectionRequirements: Record<string, string> = {
   github: "Missing GITHUB_CLIENT_ID / SECRET or PUBLIC_APP_URL",
   vercel: "Missing VERCEL_CLIENT_ID / SECRET or PUBLIC_APP_URL",
   linkedin: "LinkedIn developer app + approved OAuth scopes required",
+  apify: "Save APIFY_API_TOKEN in the API Vault",
   openai: "Managed by J.A.R.V.I.S · no separate connection needed",
   video: "Video provider adapters are not configured yet",
 };
@@ -226,6 +228,16 @@ export default function Home() {
   const connectorList = trpc.connections.list.useQuery();
   const connectorStart = trpc.connections.start.useMutation();
   const connectorDisconnect = trpc.connections.disconnect.useMutation();
+  const environmentQuery = trpc.environment.list.useQuery();
+  const environmentUpdate = trpc.environment.update.useMutation({
+    onSuccess: async result => {
+      await environmentQuery.refetch();
+      await activityQuery.refetch();
+      setEnvironmentSaveMessage(result.message);
+      setEnvironmentValues({ APIFY_API_TOKEN: "", N8N_WEBHOOK_URL: "" });
+      flash("API Vault updated", "The submitted values were encrypted server-side and masked in the dashboard.");
+    },
+  });
   const activityQuery = trpc.workflows.activity.list.useQuery();
   const activityRecord = trpc.workflows.activity.record.useMutation({ onSuccess: () => void activityQuery.refetch() });
   const workflowTasksQuery = trpc.workflows.tasks.list.useQuery();
@@ -261,6 +273,8 @@ export default function Home() {
   const [notification, setNotification] = useState<{ title: string; detail: string } | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileName, setProfileName] = useState("");
+  const [environmentValues, setEnvironmentValues] = useState({ APIFY_API_TOKEN: "", N8N_WEBHOOK_URL: "" });
+  const [environmentSaveMessage, setEnvironmentSaveMessage] = useState("");
   const [chatSessions, setChatSessions] = useState<ChatSession[]>(loadChatSessions);
   const [currentChatId, setCurrentChatId] = useState(() => loadChatSessions()[0]?.id ?? "current");
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>(() => loadChatSessions()[0]?.messages ?? [welcomeMessage]);
@@ -343,6 +357,14 @@ export default function Home() {
       icon: item.tag.toLowerCase().includes("content") ? Video : item.tag.toLowerCase().includes("deploy") ? Rocket : Mail,
     })));
   }, [approvalsQuery.data]);
+
+  useEffect(() => {
+    const apify = environmentQuery.data?.find(item => item.name === "APIFY_API_TOKEN");
+    if (!apify) return;
+    setConnections(previous => previous.map(connection => connection.id === "apify"
+      ? { ...connection, status: apify.configured ? "Connected" : "Setup required", meta: apify.masked ? `Encrypted value ${apify.masked}` : "API token required" }
+      : connection));
+  }, [environmentQuery.data]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
@@ -680,8 +702,8 @@ export default function Home() {
   const handleConnection = async (id: string) => {
     const connection = connections.find(item => item.id === id);
     if (!connection) return;
-    if (id === "openai" || id === "video") {
-      flash(connection.label, id === "openai" ? "This capability is provided by the application runtime, not a user connector." : "No video provider adapter is configured, so there is nothing to connect.");
+    if (id === "openai" || id === "video" || id === "apify") {
+      flash(connection.label, id === "openai" ? "This capability is provided by the application runtime, not a user connector." : id === "apify" ? "Configure Apify from Settings → API Vault. This card never handles the token directly." : "No video provider adapter is configured, so there is nothing to connect.");
       return;
     }
     if (connection.status === "Connected") {
@@ -758,7 +780,7 @@ export default function Home() {
   );
 
   const renderIntegrations = () => (
-    <section className="workspace-page"><div className="page-intro"><div><span className="page-kicker">INTEGRATIONS</span><h1>Your connected <em>stack.</em></h1><p>Only verified provider configuration and persisted connection records are shown as connected.</p></div><span className="connection-summary"><span className="status-dot" /> {connectedCount} of {connections.length} connected</span></div><div className="integration-grid">{connections.map(connection => { const Icon = connection.icon; const connected = connection.status === "Connected"; const canConnect = !["openai", "video"].includes(connection.id); return <div className="integration-card" key={connection.id}><div className={`integration-icon ${connection.tone}`}><Icon size={20} /></div><div className="integration-card-main"><div className="integration-card-title"><div><strong>{connection.label}</strong><span>{connection.description}</span></div><span className={`connection-state ${connected ? "connected" : "ready"}`}><span />{connection.status}</span></div><p>{connection.meta}</p><div className="integration-card-footer"><span><LockKeyhole size={13} /> {connected ? "Connection verified server-side" : "No active connection"}</span>{canConnect ? <button className={`secondary-action ${connected ? "selected" : ""}`} onClick={() => handleConnection(connection.id)}>{connected ? <><Check size={13} /> Disconnect</> : <>Connect <ArrowUpRight size={13} /></>}</button> : <button className="secondary-action" onClick={() => handleConnection(connection.id)}>Details</button>}</div></div></div>; })}</div><div className="info-callout"><ShieldCheck size={17} /><div><strong>Approval boundaries stay intact</strong><span>Connection access does not grant permission to send, publish, deploy, or change external data.</span></div></div></section>
+    <section className="workspace-page"><div className="page-intro"><div><span className="page-kicker">INTEGRATIONS</span><h1>Your connected <em>stack.</em></h1><p>Only verified provider configuration and persisted connection records are shown as connected.</p></div><span className="connection-summary"><span className="status-dot" /> {connectedCount} of {connections.length} connected</span></div><div className="integration-grid">{connections.map(connection => { const Icon = connection.icon; const connected = connection.status === "Connected"; const canConnect = !["openai", "video", "apify"].includes(connection.id); return <div className="integration-card" key={connection.id}><div className={`integration-icon ${connection.tone}`}><Icon size={20} /></div><div className="integration-card-main"><div className="integration-card-title"><div><strong>{connection.label}</strong><span>{connection.description}</span></div><span className={`connection-state ${connected ? "connected" : "ready"}`}><span />{connection.status}</span></div><p>{connection.meta}</p><div className="integration-card-footer"><span><LockKeyhole size={13} /> {connected ? "Connection verified server-side" : "No active connection"}</span>{canConnect ? <button className={`secondary-action ${connected ? "selected" : ""}`} onClick={() => handleConnection(connection.id)}>{connected ? <><Check size={13} /> Disconnect</> : <>Connect <ArrowUpRight size={13} /></>}</button> : <button className="secondary-action" onClick={() => handleConnection(connection.id)}>{connection.id === "apify" ? "Open API Vault" : "Details"}</button>}</div></div></div>; })}</div><div className="info-callout"><ShieldCheck size={17} /><div><strong>Approval boundaries stay intact</strong><span>Connection access does not grant permission to send, publish, deploy, or change external data.</span></div></div></section>
   );
 
   const renderVideoStudio = () => (
@@ -773,8 +795,20 @@ export default function Home() {
     <section className="workspace-page"><div className="page-intro"><div><span className="page-kicker">APPROVAL CENTER</span><h1>Your decision, <em>always.</em></h1><p>Review the exact next step before any connected service acts on your behalf.</p></div><span className="approval-count-large"><strong>{approvals.length}</strong> pending</span></div><div className="approval-layout"><div className="surface-panel approval-queue-panel"><div className="panel-heading"><div><span className="section-eyebrow">WAITING FOR REVIEW</span><h2>Pending actions</h2></div><span className="section-muted">Nothing runs automatically</span></div>{approvals.length ? <div className="approval-queue-list">{approvals.map(item => { const Icon = item.icon; return <div className="approval-queue-item" key={item.id}><div className="approval-queue-icon"><Icon size={18} /></div><div className="approval-queue-copy"><div className="approval-queue-meta"><span>{item.tag}</span><span className={item.risk === "Sensitive" ? "sensitive" : "review"}>{item.risk}</span></div><h3>{item.action}</h3><p>{item.detail}</p><div className="approval-queue-actions"><button className="approve-action" onClick={() => resolveApproval(item, true)}><Check size={14} /> Approve</button><button className="reject-action" onClick={() => resolveApproval(item, false)}><X size={14} /> Reject</button><button className="text-action">Review details <ChevronRight size={13} /></button></div></div><time>Submitted today</time></div>; })}</div> : <div className="empty-state"><CheckCircle2 size={30} /><strong>No persisted approvals</strong><span>Nothing is waiting for review because the approval store is not connected.</span></div>}</div><aside className="approval-policy surface-panel"><div className="policy-icon"><ShieldCheck size={22} /></div><span className="section-eyebrow">OPERATOR POLICY</span><h2>Human control stays in the loop.</h2><p>Approval decisions are not claimed as complete until a durable backend state transition and execution result are available.</p><div className="policy-points"><span><CheckCircle2 size={14} /> External sends remain disabled</span><span><CheckCircle2 size={14} /> Kill switch remains respected</span><span><AlertTriangle size={14} /> Audit persistence is not configured</span></div></aside></div></section>
   );
 
+  const saveEnvironment = () => {
+    const payload = {
+      ...(environmentValues.APIFY_API_TOKEN.trim() ? { APIFY_API_TOKEN: environmentValues.APIFY_API_TOKEN.trim() } : {}),
+      ...(environmentValues.N8N_WEBHOOK_URL.trim() ? { N8N_WEBHOOK_URL: environmentValues.N8N_WEBHOOK_URL.trim() } : {}),
+    };
+    if (!payload.APIFY_API_TOKEN && !payload.N8N_WEBHOOK_URL) {
+      flash("Nothing to save", "Enter an Apify token or n8n webhook URL. OpenAI is intentionally omitted.");
+      return;
+    }
+    environmentUpdate.mutate(payload);
+  };
+
   const renderSettings = () => (
-    <section className="workspace-page"><div className="page-intro"><div><span className="page-kicker">SETTINGS</span><h1>Keep the system <em>yours.</em></h1><p>Manage your operator profile, workspace preferences, and safety posture.</p></div><StatusPill>Protected session</StatusPill></div><div className="settings-grid"><div className="surface-panel settings-card"><div className="settings-card-head"><div className="settings-avatar">{(auth.user?.name ?? "CEO").split(" ").map(part => part[0]).join("").slice(0, 2).toUpperCase()}</div><div><span className="section-eyebrow">OPERATOR PROFILE</span><h2>{auth.user?.name || "CEO"}</h2><p>{auth.user?.email || "Authenticated operator"}</p></div><button className="secondary-action" onClick={() => setProfileOpen(true)}><Settings2 size={14} /> Edit profile</button></div><div className="settings-detail-grid"><div><span>Role</span><strong>{auth.user?.role === "admin" ? "Administrator" : "Operator"}</strong></div><div><span>Login method</span><strong>{auth.user?.loginMethod || "Manus account"}</strong></div><div><span>Account ID</span><strong>{auth.user?.openId.slice(0, 12)}…</strong></div></div></div><div className="surface-panel settings-card"><div className="panel-heading"><div><span className="section-eyebrow">SAFETY POSTURE</span><h2>Guardrails</h2></div><ShieldCheck size={18} /></div><div className="settings-toggle-list"><div><span><LockKeyhole size={15} /><span><strong>Approval required</strong><small>External actions wait for your decision.</small></span></span><span className="toggle-state on">ON</span></div><div><span><Volume2 size={15} /><span><strong>Voice replies</strong><small>Text chat is the default. Enable this only when you want J.A.R.V.I.S to speak.</small></span></span><button className={`toggle-state ${voiceRepliesEnabled ? "on" : "off"}`} onClick={toggleVoiceReplies}>{voiceRepliesEnabled ? "ON" : "OFF"}</button></div><div><span><Bell size={15} /><span><strong>Live notifications</strong><small>Keep approval and system signals visible.</small></span></span><span className="toggle-state on">ON</span></div></div></div><div className="surface-panel settings-card"><div className="panel-heading"><div><span className="section-eyebrow">SHORTCUTS</span><h2>Command palette</h2></div><Command size={18} /></div><div className="shortcut-list"><span><kbd>/</kbd><small>Focus AI Assistant</small></span><span><kbd>Ctrl K</kbd><small>Focus AI Assistant</small></span><span><kbd>C</kbd><small>Open Integrations</small></span></div></div><div className="surface-panel settings-card danger-card"><div className="panel-heading"><div><span className="section-eyebrow">SESSION</span><h2>Sign out</h2></div><Unplug size={18} /></div><p>End the current authenticated operator session on this device.</p><button className="danger-action" onClick={() => auth.logout()}><Unplug size={14} /> Sign out of J.A.R.V.I.S</button></div></div></section>
+    <section className="workspace-page"><div className="page-intro"><div><span className="page-kicker">SETTINGS</span><h1>Keep the system <em>yours.</em></h1><p>Manage your operator profile, workspace preferences, and safety posture.</p></div><StatusPill>Protected session</StatusPill></div><div className="settings-grid"><div className="surface-panel settings-card"><div className="settings-card-head"><div className="settings-avatar">{(auth.user?.name ?? "CEO").split(" ").map(part => part[0]).join("").slice(0, 2).toUpperCase()}</div><div><span className="section-eyebrow">OPERATOR PROFILE</span><h2>{auth.user?.name || "CEO"}</h2><p>{auth.user?.email || "Authenticated operator"}</p></div><button className="secondary-action" onClick={() => setProfileOpen(true)}><Settings2 size={14} /> Edit profile</button></div><div className="settings-detail-grid"><div><span>Role</span><strong>{auth.user?.role === "admin" ? "Administrator" : "Operator"}</strong></div><div><span>Login method</span><strong>{auth.user?.loginMethod || "Manus account"}</strong></div><div><span>Account ID</span><strong>{auth.user?.openId.slice(0, 12)}…</strong></div></div></div><div className="surface-panel settings-card"><div className="panel-heading"><div><span className="section-eyebrow">SAFETY POSTURE</span><h2>Guardrails</h2></div><ShieldCheck size={18} /></div><div className="settings-toggle-list"><div><span><LockKeyhole size={15} /><span><strong>Approval required</strong><small>External actions wait for your decision.</small></span></span><span className="toggle-state on">ON</span></div><div><span><Volume2 size={15} /><span><strong>Voice replies</strong><small>Text chat is the default. Enable this only when you want J.A.R.V.I.S to speak.</small></span></span><button className={`toggle-state ${voiceRepliesEnabled ? "on" : "off"}`} onClick={toggleVoiceReplies}>{voiceRepliesEnabled ? "ON" : "OFF"}</button></div><div><span><Bell size={15} /><span><strong>Live notifications</strong><small>Keep approval and system signals visible.</small></span></span><span className="toggle-state on">ON</span></div></div></div><div className="surface-panel settings-card vault-card"><div className="panel-heading"><div><span className="section-eyebrow">API VAULT / SYSTEM ENVIRONMENT</span><h2>Secure configuration</h2></div><KeyRound size={18} /></div><p>Values are encrypted on the server and never returned to the browser in plaintext. OpenAI configuration is intentionally omitted for now.</p><label className="profile-field"><span>APIFY_API_TOKEN</span><input type="password" value={environmentValues.APIFY_API_TOKEN} onChange={event => setEnvironmentValues(previous => ({ ...previous, APIFY_API_TOKEN: event.target.value }))} placeholder={environmentQuery.data?.find(item => item.name === "APIFY_API_TOKEN")?.masked ?? "Not configured"} autoComplete="new-password" /></label><label className="profile-field"><span>N8N_WEBHOOK_URL</span><input type="url" value={environmentValues.N8N_WEBHOOK_URL} onChange={event => setEnvironmentValues(previous => ({ ...previous, N8N_WEBHOOK_URL: event.target.value }))} placeholder={environmentQuery.data?.find(item => item.name === "N8N_WEBHOOK_URL")?.masked ?? "Not configured"} autoComplete="url" /></label><div className="vault-actions"><button className="primary-action" onClick={saveEnvironment} disabled={environmentUpdate.isPending}><KeyRound size={14} /> {environmentUpdate.isPending ? "Encrypting..." : "Save Configuration"}</button><span>Server-side encryption required</span></div>{environmentSaveMessage && <div className="info-callout"><CheckCircle2 size={16} /><div><strong>{environmentSaveMessage}</strong><span>Connections Center will show verified Apify status after refresh.</span></div></div>}<div className="vault-status-list">{environmentQuery.data?.map(item => <div key={item.name}><span>{item.name}</span><strong>{item.configured ? item.masked : "Not configured"}</strong></div>)}</div></div><div className="surface-panel settings-card"><div className="panel-heading"><div><span className="section-eyebrow">SHORTCUTS</span><h2>Command palette</h2></div><Command size={18} /></div><div className="shortcut-list"><span><kbd>/</kbd><small>Focus AI Assistant</small></span><span><kbd>Ctrl K</kbd><small>Focus AI Assistant</small></span><span><kbd>C</kbd><small>Open Integrations</small></span></div></div><div className="surface-panel settings-card danger-card"><div className="panel-heading"><div><span className="section-eyebrow">SESSION</span><h2>Sign out</h2></div><Unplug size={18} /></div><p>End the current authenticated operator session on this device.</p><button className="danger-action" onClick={() => auth.logout()}><Unplug size={14} /> Sign out of J.A.R.V.I.S</button></div></div></section>
   );
 
   const renderWorkspace = () => {

@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -109,3 +109,17 @@ export const approvalRequests = mysqlTable("approval_requests", {
 
 export type ApprovalRequest = typeof approvalRequests.$inferSelect;
 export type InsertApprovalRequest = typeof approvalRequests.$inferInsert;
+
+export const environmentSecrets = mysqlTable("environment_secrets", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  name: varchar("name", { length: 64 }).notNull(),
+  encryptedValue: text("encryptedValue").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => ({
+  userNameUnique: uniqueIndex("environment_secrets_user_name_unique").on(table.userId, table.name),
+}));
+
+export type EnvironmentSecret = typeof environmentSecrets.$inferSelect;
+export type InsertEnvironmentSecret = typeof environmentSecrets.$inferInsert;

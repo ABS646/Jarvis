@@ -3,8 +3,9 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { invokeLLM } from "./_core/llm";
-import { createActivityEvent, createApprovalRequest, createWorkflowTask, decideApprovalRequest, listActivityEvents, listApprovalRequests, listServiceConnections, listWorkflowTasks, revokeServiceConnection, updateUserProfile } from "./db";
-import { createCodeChallenge, createCodeVerifier, createConnectorState, getAuthorizationUrl, getConnectorRedirectUri, getProviderPublicStatus, PROVIDERS } from "./connectors";
+import { createActivityEvent, createApprovalRequest, createWorkflowTask, decideApprovalRequest, listActivityEvents, listApprovalRequests, listEnvironmentSecrets, listServiceConnections, listWorkflowTasks, revokeServiceConnection, updateUserProfile, upsertEnvironmentSecret } from "./db";
+import { createCodeChallenge, createCodeVerifier, createConnectorState, decryptSecret, encryptSecret, getAuthorizationUrl, getConnectorRedirectUri, getProviderPublicStatus, PROVIDERS } from "./connectors";
+import { environmentSecretNames, environmentUpdateMessage, environmentUpdateSchema, maskEnvironmentSecret } from "./environment";
 import { z } from "zod";
 
 const chatContentPart = z.discriminatedUnion("type", [
@@ -40,6 +41,35 @@ export const appRouter = router({
         const updatedUser = await updateUserProfile(ctx.user.openId, input.name);
         if (!updatedUser) throw new Error("Profile could not be updated");
         return updatedUser;
+      }),
+  }),
+
+  environment: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const saved = await listEnvironmentSecrets(ctx.user.id);
+      return environmentSecretNames.map(name => {
+        const record = saved.find(item => item.name === name);
+        return { name, configured: Boolean(record), masked: record ? maskEnvironmentSecret(record.encryptedValue) : null };
+      });
+    }),
+    update: protectedProcedure
+      .input(environmentUpdateSchema)
+      .mutation(async ({ ctx, input }) => {
+        for (const name of environmentSecretNames) {
+          const value = input[name];
+          if (value !== undefined) {
+            await upsertEnvironmentSecret({ userId: ctx.user.id, name, encryptedValue: encryptSecret(value) });
+          }
+        }
+        await createActivityEvent({ userId: ctx.user.id, kind: "success", message: environmentUpdateMessage });
+        const saved = await listEnvironmentSecrets(ctx.user.id);
+        return {
+          message: environmentUpdateMessage,
+          values: environmentSecretNames.map(name => {
+            const record = saved.find(item => item.name === name);
+            return { name, configured: Boolean(record), masked: record ? maskEnvironmentSecret(record.encryptedValue) : null };
+          }),
+        };
       }),
   }),
 
