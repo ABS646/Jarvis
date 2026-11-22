@@ -62,3 +62,50 @@ export const backgroundJobs = mysqlTable("background_jobs", {
 
 export type BackgroundJob = typeof backgroundJobs.$inferSelect;
 export type InsertBackgroundJob = typeof backgroundJobs.$inferInsert;
+
+export const activityEvents = mysqlTable("activity_events", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  kind: varchar("kind", { length: 24 }).notNull(),
+  message: text("message").notNull(),
+  metadata: text("metadata"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ActivityEvent = typeof activityEvents.$inferSelect;
+export type InsertActivityEvent = typeof activityEvents.$inferInsert;
+
+export const workflowTasks = mysqlTable("workflow_tasks", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  title: varchar("title", { length: 191 }).notNull(),
+  detail: text("detail").notNull(),
+  status: varchar("status", { length: 24 }).notNull().default("pending"),
+  progress: int("progress").notNull().default(0),
+  approvalRequired: int("approvalRequired").notNull().default(1),
+  error: text("error"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type WorkflowTask = typeof workflowTasks.$inferSelect;
+export type InsertWorkflowTask = typeof workflowTasks.$inferInsert;
+
+export const approvalRequests = mysqlTable("approval_requests", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  action: varchar("action", { length: 191 }).notNull(),
+  detail: text("detail").notNull(),
+  tag: varchar("tag", { length: 32 }).notNull(),
+  risk: varchar("risk", { length: 24 }).notNull().default("review"),
+  status: varchar("status", { length: 24 }).notNull().default("pending"),
+  executionStatus: varchar("executionStatus", { length: 24 }).notNull().default("not_started"),
+  idempotencyKey: varchar("idempotencyKey", { length: 191 }).notNull().unique(),
+  executionError: text("executionError"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  decidedAt: timestamp("decidedAt"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ApprovalRequest = typeof approvalRequests.$inferSelect;
+export type InsertApprovalRequest = typeof approvalRequests.$inferInsert;

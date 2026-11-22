@@ -1,6 +1,6 @@
-import { and, asc, eq, lte } from "drizzle-orm";
+import { and, asc, desc, eq, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { backgroundJobs, InsertBackgroundJob, InsertServiceConnection, InsertUser, serviceConnections, users } from "../drizzle/schema";
+import { activityEvents, approvalRequests, backgroundJobs, InsertActivityEvent, InsertApprovalRequest, InsertBackgroundJob, InsertServiceConnection, InsertUser, InsertWorkflowTask, serviceConnections, users, workflowTasks } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -168,4 +168,57 @@ export async function finishBackgroundJob(id: number, status: "succeeded" | "fai
   await db.update(backgroundJobs).set({ status, lastError: lastError ?? null }).where(eq(backgroundJobs.id, id));
 }
 
-// TODO: add feature queries here as your schema grows.
+export async function listActivityEvents(userId: number, limit = 50) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  return db.select().from(activityEvents).where(eq(activityEvents.userId, userId)).orderBy(desc(activityEvents.createdAt)).limit(Math.min(Math.max(limit, 1), 200));
+}
+
+export async function createActivityEvent(values: InsertActivityEvent) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  await db.insert(activityEvents).values(values);
+  return (await db.select().from(activityEvents).where(eq(activityEvents.userId, values.userId)).orderBy(desc(activityEvents.createdAt)).limit(1))[0];
+}
+
+export async function listWorkflowTasks(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  return db.select().from(workflowTasks).where(eq(workflowTasks.userId, userId)).orderBy(desc(workflowTasks.updatedAt)).limit(100);
+}
+
+export async function createWorkflowTask(values: InsertWorkflowTask) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  await db.insert(workflowTasks).values(values);
+  return (await db.select().from(workflowTasks).where(eq(workflowTasks.userId, values.userId)).orderBy(desc(workflowTasks.createdAt)).limit(1))[0];
+}
+
+export async function listApprovalRequests(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  return db.select().from(approvalRequests).where(eq(approvalRequests.userId, userId)).orderBy(desc(approvalRequests.updatedAt)).limit(100);
+}
+
+export async function createApprovalRequest(values: InsertApprovalRequest) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  try {
+    await db.insert(approvalRequests).values(values);
+  } catch (error) {
+    const existing = await db.select().from(approvalRequests).where(eq(approvalRequests.idempotencyKey, values.idempotencyKey)).limit(1);
+    if (!existing[0]) throw error;
+    return existing[0];
+  }
+  return (await db.select().from(approvalRequests).where(eq(approvalRequests.idempotencyKey, values.idempotencyKey)).limit(1))[0];
+}
+
+export async function decideApprovalRequest(id: number, userId: number, status: "approved" | "rejected") {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const existing = await db.select().from(approvalRequests).where(and(eq(approvalRequests.id, id), eq(approvalRequests.userId, userId))).limit(1);
+  if (!existing[0]) throw new Error("Approval request not found");
+  if (existing[0].status !== "pending") return existing[0];
+  await db.update(approvalRequests).set({ status, decidedAt: new Date(), executionStatus: "not_started" }).where(and(eq(approvalRequests.id, id), eq(approvalRequests.userId, userId), eq(approvalRequests.status, "pending")));
+  return (await db.select().from(approvalRequests).where(and(eq(approvalRequests.id, id), eq(approvalRequests.userId, userId))).limit(1))[0];
+}

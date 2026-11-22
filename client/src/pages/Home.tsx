@@ -226,6 +226,16 @@ export default function Home() {
   const connectorList = trpc.connections.list.useQuery();
   const connectorStart = trpc.connections.start.useMutation();
   const connectorDisconnect = trpc.connections.disconnect.useMutation();
+  const activityQuery = trpc.workflows.activity.list.useQuery();
+  const activityRecord = trpc.workflows.activity.record.useMutation({ onSuccess: () => void activityQuery.refetch() });
+  const workflowTasksQuery = trpc.workflows.tasks.list.useQuery();
+  const approvalsQuery = trpc.workflows.approvals.list.useQuery();
+  const approvalDecide = trpc.workflows.approvals.decide.useMutation({
+    onSuccess: async () => {
+      await approvalsQuery.refetch();
+      await activityQuery.refetch();
+    },
+  });
   const profileUpdate = trpc.profile.update.useMutation({
     onSuccess: async () => {
       await auth.refresh();
@@ -299,6 +309,40 @@ export default function Home() {
       return { ...connection, status: catalogRecord?.configured ? "Not connected" : "Setup required", meta: catalogRecord?.configured ? "OAuth is configured; connect an account" : connectionRequirements[connection.id] || "Provider configuration required" };
     }));
   }, [connectorCatalog.data, connectorList.data]);
+
+  useEffect(() => {
+    if (!activityQuery.data) return;
+    setLogs(activityQuery.data.map(event => ({
+      id: event.id,
+      time: new Date(event.createdAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+      kind: (event.kind as LogKind) || "info",
+      message: event.message,
+    })));
+  }, [activityQuery.data]);
+
+  useEffect(() => {
+    if (!workflowTasksQuery.data) return;
+    setTasks(workflowTasksQuery.data.map(task => ({
+      id: String(task.id),
+      title: task.title,
+      detail: task.detail,
+      stage: task.status === "running" ? "Preparing" : task.status === "completed" ? "Complete" : task.status === "approved" ? "Approved" : task.status === "awaiting_approval" ? "Awaiting approval" : "Reasoning",
+      progress: task.progress,
+      approvalRequired: Boolean(task.approvalRequired),
+    })));
+  }, [workflowTasksQuery.data]);
+
+  useEffect(() => {
+    if (!approvalsQuery.data) return;
+    setApprovals(approvalsQuery.data.filter(item => item.status === "pending").map(item => ({
+      id: String(item.id),
+      action: item.action,
+      detail: item.detail,
+      tag: item.tag,
+      risk: item.risk === "sensitive" ? "Sensitive" : "Review",
+      icon: item.tag.toLowerCase().includes("content") ? Video : item.tag.toLowerCase().includes("deploy") ? Rocket : Mail,
+    })));
+  }, [approvalsQuery.data]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
@@ -390,7 +434,7 @@ export default function Home() {
 
   const connectedCount = useMemo(() => connections.filter(connection => connection.status === "Connected").length, [connections]);
   const addLog = (kind: LogKind, message: string) => {
-    setLogs(prev => [...prev, { id: Date.now() + Math.random(), time: formatTime(), kind, message }]);
+    activityRecord.mutate({ kind, message });
   };
   const flash = (title: string, detail: string) => {
     setNotification({ title, detail });
@@ -661,10 +705,13 @@ export default function Home() {
     }
   };
 
-  const resolveApproval = (item: ApprovalItem, approved: boolean) => {
-    setApprovals(prev => prev.filter(current => current.id !== item.id));
-    addLog(approved ? "success" : "wait", `${approved ? "Approved" : "Rejected"}: ${item.action}.`);
-    flash(approved ? "Approval recorded" : "Action rejected", approved ? `${item.action} is cleared for the connected adapter.` : "The workflow remains paused and no action was sent.");
+  const resolveApproval = async (item: ApprovalItem, approved: boolean) => {
+    try {
+      await approvalDecide.mutateAsync({ id: Number(item.id), status: approved ? "approved" : "rejected" });
+      flash(approved ? "Approval recorded" : "Action rejected", approved ? `${item.action} is approved, but execution is tracked separately and has not been claimed complete.` : "The workflow remains paused and no action was sent.");
+    } catch (error) {
+      flash("Approval could not be saved", error instanceof Error ? error.message : "The approval service is unavailable.");
+    }
   };
 
   const renderMetric = (label: string, value: string, detail: string, tone: string, icon: LucideIcon) => {

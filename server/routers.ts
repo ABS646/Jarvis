@@ -3,7 +3,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { invokeLLM } from "./_core/llm";
-import { listServiceConnections, revokeServiceConnection, updateUserProfile } from "./db";
+import { createActivityEvent, createApprovalRequest, createWorkflowTask, decideApprovalRequest, listActivityEvents, listApprovalRequests, listServiceConnections, listWorkflowTasks, revokeServiceConnection, updateUserProfile } from "./db";
 import { createCodeChallenge, createCodeVerifier, createConnectorState, getAuthorizationUrl, getConnectorRedirectUri, getProviderPublicStatus, PROVIDERS } from "./connectors";
 import { z } from "zod";
 
@@ -68,6 +68,34 @@ export const appRouter = router({
         }
         return { message: content.trim() };
       }),
+  }),
+
+  workflows: router({
+    activity: router({
+      list: protectedProcedure.query(({ ctx }) => listActivityEvents(ctx.user.id)),
+      record: protectedProcedure
+        .input(z.object({ kind: z.string().trim().min(1).max(24), message: z.string().trim().min(1).max(2000), metadata: z.string().max(12000).optional() }))
+        .mutation(({ ctx, input }) => createActivityEvent({ userId: ctx.user.id, ...input })),
+    }),
+    tasks: router({
+      list: protectedProcedure.query(({ ctx }) => listWorkflowTasks(ctx.user.id)),
+      create: protectedProcedure
+        .input(z.object({ title: z.string().trim().min(1).max(191), detail: z.string().trim().min(1).max(12000), approvalRequired: z.boolean().default(true) }))
+        .mutation(({ ctx, input }) => createWorkflowTask({ userId: ctx.user.id, title: input.title, detail: input.detail, approvalRequired: input.approvalRequired ? 1 : 0 })),
+    }),
+    approvals: router({
+      list: protectedProcedure.query(({ ctx }) => listApprovalRequests(ctx.user.id)),
+      create: protectedProcedure
+        .input(z.object({ action: z.string().trim().min(1).max(191), detail: z.string().trim().min(1).max(12000), tag: z.string().trim().min(1).max(32), risk: z.enum(["review", "sensitive"]).default("review"), idempotencyKey: z.string().trim().min(8).max(191) }))
+        .mutation(({ ctx, input }) => createApprovalRequest({ userId: ctx.user.id, ...input })),
+      decide: protectedProcedure
+        .input(z.object({ id: z.number().int().positive(), status: z.enum(["approved", "rejected"]) }))
+        .mutation(async ({ ctx, input }) => {
+          const result = await decideApprovalRequest(input.id, ctx.user.id, input.status);
+          await createActivityEvent({ userId: ctx.user.id, kind: input.status === "approved" ? "success" : "wait", message: `Approval ${input.status}: ${result.action}`, metadata: JSON.stringify({ approvalId: result.id, executionStatus: result.executionStatus }) });
+          return result;
+        }),
+    }),
   }),
 
   connections: router({
