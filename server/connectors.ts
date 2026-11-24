@@ -43,15 +43,12 @@ export function getConnectorRedirectUri(provider: Provider) {
 }
 
 export function getProviderPublicStatus(provider: Provider) {
+  // Only providers with a complete authorization and identity adapter may be reported configured.
   const configured = provider === "github"
-    ? Boolean(ENV.githubClientId && ENV.githubClientSecret)
+    ? Boolean(ENV.githubClientId && ENV.githubClientSecret && ENV.publicAppUrl)
     : provider === "vercel"
-      ? Boolean(ENV.vercelClientId && ENV.vercelClientSecret)
-      : provider === "instagram"
-        ? Boolean(ENV.instagramClientId && ENV.instagramClientSecret)
-        : provider === "tiktok"
-          ? Boolean(ENV.tiktokClientKey && ENV.tiktokClientSecret)
-          : false;
+      ? Boolean(ENV.vercelClientId && ENV.vercelClientSecret && ENV.publicAppUrl)
+      : false;
   return { provider, label: providerLabels[provider], configured };
 }
 
