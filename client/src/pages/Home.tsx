@@ -226,6 +226,7 @@ function StatusPill({ children, tone = "online" }: { children: React.ReactNode; 
 
 export default function Home() {
   const auth = useAuth();
+  const [loginError, setLoginError] = useState("");
   const assistantChat = trpc.assistant.chat.useMutation();
   const connectorCatalog = trpc.connections.catalog.useQuery();
   const connectorList = trpc.connections.list.useQuery();
@@ -876,7 +877,7 @@ export default function Home() {
   }
 
   if (!auth.isAuthenticated || !auth.user) {
-    return <div className="auth-screen"><div className="auth-card"><div className="auth-orb"><span>J</span></div><div className="eyebrow accent-eyebrow"><span className="eyebrow-line" />SECURE OPERATOR ACCESS</div><h1>J.A.R.V.I.S <em>awaits.</em></h1><p>Sign in with your Manus account to access your private command center, connections, approvals, and profile. Access is restricted to the configured owner account.</p><button className="auth-login-button" onClick={() => startLogin()}><ShieldCheck size={16} /> Sign in to continue <ArrowUpRight size={15} /></button><span className="auth-footnote"><LockKeyhole size={13} /> Only the configured owner account can use this dashboard.</span></div></div>;
+    return <div className="auth-screen"><div className="auth-card"><div className="auth-orb"><span>J</span></div><div className="eyebrow accent-eyebrow"><span className="eyebrow-line" />SECURE OPERATOR ACCESS</div><h1>J.A.R.V.I.S <em>awaits.</em></h1><p>Sign in with your Manus account to access your private command center, connections, approvals, and profile. Access is restricted to the configured owner account.</p><button className="auth-login-button" onClick={() => { try { setLoginError(""); startLogin(); } catch (error) { setLoginError(error instanceof Error ? error.message : "Unable to start sign-in. Please try again."); } }}><ShieldCheck size={16} /> Sign in to continue <ArrowUpRight size={15} /></button>{loginError && <p className="auth-login-error" role="alert">{loginError}. Check that the J.A.R.V.I.S OAuth environment is configured for this deployment.</p>}<span className="auth-footnote"><LockKeyhole size={13} /> Only the configured owner account can use this dashboard.</span></div></div>;
   }
 
   return (
