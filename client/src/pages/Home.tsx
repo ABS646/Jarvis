@@ -747,7 +747,7 @@ export default function Home() {
     if (!connection) return;
     if (id === "apify" || id === "n8n") { navigateTo("Settings"); flash("API Vault", "Add or update the provider credentials in Settings."); return; }
     if (id === "openai" || id === "video") {
-      flash(connection.label, id === "openai" ? "This capability is provided by the application runtime, not a user connector." : id === "apify" ? "Configure Apify from Settings → API Vault. This card never handles the token directly." : "No video provider adapter is configured, so there is nothing to connect.");
+      flash(connection.label, id === "openai" ? "This capability is provided by the application-managed runtime; the saved OpenAI key is not active for chat yet." : "No video provider adapter is configured, so there is nothing to connect.");
       return;
     }
     if (connection.status === "Connected") {
