@@ -16,6 +16,7 @@ describe("API Vault security contracts", () => {
   it("accepts only the supported OpenAI, Apify, and n8n fields", () => {
     expect(environmentUpdateSchema.safeParse({ OPENAI_API_KEY: "sk-test-secret" }).success).toBe(true);
     expect(environmentUpdateSchema.safeParse({ APIFY_API_TOKEN: "token" }).success).toBe(true);
+    expect(environmentUpdateSchema.safeParse({ N8N_API_KEY: "n8n-secret" }).success).toBe(true);
     expect(environmentUpdateSchema.safeParse({ N8N_WEBHOOK_URL: "https://n8n.example.test/hook" }).success).toBe(true);
     expect(environmentUpdateSchema.safeParse({ UNKNOWN_PROVIDER_SECRET: "secret" }).success).toBe(false);
     expect(environmentUpdateSchema.safeParse({}).success).toBe(false);
