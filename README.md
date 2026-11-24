@@ -38,3 +38,18 @@ These values are parsed server-side for compatibility and diagnostics. Setting a
 ### Going aggressive
 
 There is no supported aggressive mode in this release. Do not add unofficial messaging transports, scraping-evasion logic, credential collection, consent bypasses, or uncontrolled dispatch behind a feature flag. Safe expansion should use official provider APIs, permitted sources, enforced opt-outs, rate limits, audit records, and explicit operator approval.
+
+## API Vault and provider credentials
+
+The Settings → API Vault accepts per-user credentials for:
+
+- `OPENAI_API_KEY`
+- `APIFY_API_TOKEN`
+- `N8N_API_KEY`
+- `N8N_WEBHOOK_URL`
+
+Values are encrypted with AES-256-GCM before they are stored in the database. The API returns only masked values. Set `CONNECTOR_ENCRYPTION_KEY` as a strong, private deployment secret before saving credentials; if it is missing, writes fail closed. Never commit API keys or encryption keys to this repository.
+
+**Adapter status:** OpenAI credentials can currently be stored and removed, but the assistant still uses the application-managed model runtime. Apify and n8n credentials are stored, but their actor/workflow execution adapters are not yet implemented. Saving a key does not mean the provider is connected or operational.
+
+GitHub and Vercel OAuth application credentials are separate server-side deployment secrets: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `VERCEL_CLIENT_ID`, `VERCEL_CLIENT_SECRET`, and `PUBLIC_APP_URL`. Only providers with a complete implemented OAuth and identity flow are reported as configured.
