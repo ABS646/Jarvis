@@ -247,6 +247,15 @@ export async function listEnvironmentSecrets(userId: number) {
   return db.select().from(environmentSecrets).where(eq(environmentSecrets.userId, userId)).orderBy(asc(environmentSecrets.name));
 }
 
+export async function deleteEnvironmentSecret(name: string, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const existing = await db.select({ id: environmentSecrets.id }).from(environmentSecrets).where(and(eq(environmentSecrets.userId, userId), eq(environmentSecrets.name, name))).limit(1);
+  if (!existing[0]) return { success: true as const, deleted: false as const };
+  await db.delete(environmentSecrets).where(and(eq(environmentSecrets.id, existing[0].id), eq(environmentSecrets.userId, userId)));
+  return { success: true as const, deleted: true as const };
+}
+
 export async function upsertEnvironmentSecret(values: InsertEnvironmentSecret) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
