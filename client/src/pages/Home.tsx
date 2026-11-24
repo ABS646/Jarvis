@@ -173,6 +173,7 @@ const initialConnections: Connection[] = [
   { id: "vercel", label: "Vercel", description: "Projects, builds & deployments", meta: "Provider setup required", status: "Setup required", icon: Globe2, tone: "slate" },
   { id: "linkedin", label: "LinkedIn", description: "Lead discovery & prospect lists", meta: "No supported adapter configured", status: "Setup required", icon: Linkedin, tone: "blue" },
   { id: "apify", label: "Apify", description: "Actor runs & lead discovery", meta: "API token required", status: "Setup required", icon: Code2, tone: "amber" },
+  { id: "n8n", label: "n8n", description: "Workflow orchestration & webhooks", meta: "Webhook URL required · execution adapter pending", status: "Setup required", icon: Network, tone: "violet" },
   { id: "openai", label: "Managed reasoning", description: "Reasoning, copy & structured output", meta: "Provided by the application runtime", status: "Connected", icon: Sparkles, tone: "mint" },
   { id: "video", label: "Video stack", description: "Generate, review & publish content", meta: "No video provider configured", status: "Setup required", icon: Video, tone: "amber" },
 ];
@@ -318,7 +319,7 @@ export default function Home() {
 
   useEffect(() => {
     setConnections(previous => previous.map(connection => {
-      if (connection.id === "openai") return { ...connection, status: "Connected", meta: "Provided by the application runtime" };
+      if (connection.id === "openai") return { ...connection, status: "Setup required", meta: "Application-managed model route; live health is not probed. Vault OpenAI key is not yet used for chat." };
       if (connection.id === "video") return { ...connection, status: "Setup required", meta: "No video provider adapter is configured" };
       const catalogRecord = connectorCatalog.data?.find(item => item.provider === connection.id);
       const record = connectorList.data?.find(item => item.provider === connection.id);
@@ -732,7 +733,8 @@ export default function Home() {
   const handleConnection = async (id: string) => {
     const connection = connections.find(item => item.id === id);
     if (!connection) return;
-    if (id === "openai" || id === "video" || id === "apify") {
+    if (id === "apify" || id === "n8n") { navigateTo("Settings"); flash("API Vault", "Add or update the provider credentials in Settings."); return; }
+    if (id === "openai" || id === "video") {
       flash(connection.label, id === "openai" ? "This capability is provided by the application runtime, not a user connector." : id === "apify" ? "Configure Apify from Settings → API Vault. This card never handles the token directly." : "No video provider adapter is configured, so there is nothing to connect.");
       return;
     }
@@ -810,7 +812,7 @@ export default function Home() {
   );
 
   const renderIntegrations = () => (
-    <section className="workspace-page"><div className="page-intro"><div><span className="page-kicker">INTEGRATIONS</span><h1>Your connected <em>stack.</em></h1><p>Only verified provider configuration and persisted connection records are shown as connected.</p></div><span className="connection-summary"><span className="status-dot" /> {connectedCount} of {connections.length} connected</span></div><div className="integration-grid">{connections.map(connection => { const Icon = connection.icon; const connected = connection.status === "Connected"; const canConnect = !["openai", "video", "apify"].includes(connection.id); return <div className="integration-card" key={connection.id}><div className={`integration-icon ${connection.tone}`}><Icon size={20} /></div><div className="integration-card-main"><div className="integration-card-title"><div><strong>{connection.label}</strong><span>{connection.description}</span></div><span className={`connection-state ${connected ? "connected" : "ready"}`}><span />{connection.status}</span></div><p>{connection.meta}</p><div className="integration-card-footer"><span><LockKeyhole size={13} /> {connected ? "Connection verified server-side" : "No active connection"}</span>{canConnect ? <button className={`secondary-action ${connected ? "selected" : ""}`} onClick={() => handleConnection(connection.id)}>{connected ? <><Check size={13} /> Disconnect</> : <>Connect <ArrowUpRight size={13} /></>}</button> : <button className="secondary-action" onClick={() => handleConnection(connection.id)}>{connection.id === "apify" ? "Open API Vault" : "Details"}</button>}</div></div></div>; })}</div><div className="info-callout"><ShieldCheck size={17} /><div><strong>Approval boundaries stay intact</strong><span>Connection access does not grant permission to send, publish, deploy, or change external data.</span></div></div></section>
+    <section className="workspace-page"><div className="page-intro"><div><span className="page-kicker">INTEGRATIONS</span><h1>Your connected <em>stack.</em></h1><p>Only verified provider configuration and persisted connection records are shown as connected.</p></div><span className="connection-summary"><span className="status-dot" /> {connectedCount} of {connections.length} connected</span></div><div className="integration-grid">{connections.map(connection => { const Icon = connection.icon; const connected = connection.status === "Connected"; const canConnect = ["github", "vercel", "instagram", "tiktok", "linkedin", "gmail"].includes(connection.id); return <div className="integration-card" key={connection.id}><div className={`integration-icon ${connection.tone}`}><Icon size={20} /></div><div className="integration-card-main"><div className="integration-card-title"><div><strong>{connection.label}</strong><span>{connection.description}</span></div><span className={`connection-state ${connected ? "connected" : "ready"}`}><span />{connection.status}</span></div><p>{connection.meta}</p><div className="integration-card-footer"><span><LockKeyhole size={13} /> {connected ? "Connection verified server-side" : "No active connection"}</span>{canConnect ? <button className={`secondary-action ${connected ? "selected" : ""}`} onClick={() => handleConnection(connection.id)}>{connected ? <><Check size={13} /> Disconnect</> : <>Connect <ArrowUpRight size={13} /></>}</button> : <button className="secondary-action" onClick={() => handleConnection(connection.id)}>{connection.id === "apify" || connection.id === "n8n" ? "Open API Vault" : "Details"}</button>}</div></div></div>; })}</div><div className="info-callout"><ShieldCheck size={17} /><div><strong>Approval boundaries stay intact</strong><span>Connection access does not grant permission to send, publish, deploy, or change external data.</span></div></div></section>
   );
 
   const renderVideoStudio = () => (
