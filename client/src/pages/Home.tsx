@@ -94,6 +94,7 @@ type ApprovalItem = {
   detail: string;
   tag: string;
   risk: "Review" | "Sensitive";
+  status: string;
   icon: LucideIcon;
 };
 
@@ -269,6 +270,7 @@ export default function Home() {
   const [logs, setLogs] = useState<LogEntry[]>(initialLogs);
   const [connections, setConnections] = useState<Connection[]>(initialConnections);
   const [approvals, setApprovals] = useState<ApprovalItem[]>([]);
+  const [approvalHistory, setApprovalHistory] = useState<ApprovalItem[]>([]);
   const [command, setCommand] = useState("");
   const [history, setHistory] = useState<string[]>([]);
   const [listening, setListening] = useState(false);
@@ -355,14 +357,17 @@ export default function Home() {
 
   useEffect(() => {
     if (!approvalsQuery.data) return;
-    setApprovals(approvalsQuery.data.filter(item => item.status === "pending").map(item => ({
+    const mappedApprovals = approvalsQuery.data.map(item => ({
       id: String(item.id),
       action: item.action,
       detail: item.detail,
       tag: item.tag,
-      risk: item.risk === "sensitive" ? "Sensitive" : "Review",
+      risk: item.risk === "sensitive" ? "Sensitive" as const : "Review" as const,
+      status: item.status,
       icon: item.tag.toLowerCase().includes("content") ? Video : item.tag.toLowerCase().includes("deploy") ? Rocket : Mail,
-    })));
+    }));
+    setApprovals(mappedApprovals.filter(item => item.status === "pending"));
+    setApprovalHistory(mappedApprovals.filter(item => item.status !== "pending"));
   }, [approvalsQuery.data]);
 
   useEffect(() => {
@@ -825,7 +830,7 @@ export default function Home() {
   );
 
   const renderApprovals = () => (
-    <section className="workspace-page"><div className="page-intro"><div><span className="page-kicker">APPROVAL CENTER</span><h1>Your decision, <em>always.</em></h1><p>Review the exact next step before any connected service acts on your behalf.</p></div><span className="approval-count-large"><strong>{approvals.length}</strong> pending</span></div><div className="approval-layout"><div className="surface-panel approval-queue-panel"><div className="panel-heading"><div><span className="section-eyebrow">WAITING FOR REVIEW</span><h2>Pending actions</h2></div><span className="section-muted">Nothing runs automatically</span></div>{approvals.length ? <div className="approval-queue-list">{approvals.map(item => { const Icon = item.icon; return <div className="approval-queue-item" key={item.id}><div className="approval-queue-icon"><Icon size={18} /></div><div className="approval-queue-copy"><div className="approval-queue-meta"><span>{item.tag}</span><span className={item.risk === "Sensitive" ? "sensitive" : "review"}>{item.risk}</span></div><h3>{item.action}</h3><p>{item.detail}</p><div className="approval-queue-actions"><button className="approve-action" onClick={() => resolveApproval(item, true)}><Check size={14} /> Approve</button><button className="reject-action" onClick={() => resolveApproval(item, false)}><X size={14} /> Reject</button><button className="text-action">Review details <ChevronRight size={13} /></button></div></div><time>Submitted today</time></div>; })}</div> : <div className="empty-state"><CheckCircle2 size={30} /><strong>No persisted approvals</strong><span>Nothing is currently waiting for your review.</span></div>}</div><aside className="approval-policy surface-panel"><div className="policy-icon"><ShieldCheck size={22} /></div><span className="section-eyebrow">OPERATOR POLICY</span><h2>Human control stays in the loop.</h2><p>Approval decisions are not claimed as complete until a durable backend state transition and execution result are available.</p><div className="policy-points"><span><CheckCircle2 size={14} /> External sends remain disabled</span><span><CheckCircle2 size={14} /> Kill switch remains respected</span><span><AlertTriangle size={14} /> Lead and outreach audit records are not implemented</span></div></aside></div></section>
+    <section className="workspace-page"><div className="page-intro"><div><span className="page-kicker">APPROVAL CENTER</span><h1>Your decision, <em>always.</em></h1><p>Review the exact next step before any connected service acts on your behalf.</p></div><span className="approval-count-large"><strong>{approvals.length}</strong> pending</span></div><div className="approval-layout"><div className="surface-panel approval-queue-panel"><div className="panel-heading"><div><span className="section-eyebrow">WAITING FOR REVIEW</span><h2>Pending actions</h2></div><span className="section-muted">Nothing runs automatically</span></div>{approvals.length ? <div className="approval-queue-list">{approvals.map(item => { const Icon = item.icon; return <div className="approval-queue-item" key={item.id}><div className="approval-queue-icon"><Icon size={18} /></div><div className="approval-queue-copy"><div className="approval-queue-meta"><span>{item.tag}</span><span className={item.risk === "Sensitive" ? "sensitive" : "review"}>{item.risk}</span></div><h3>{item.action}</h3><p>{item.detail}</p><div className="approval-queue-actions"><button className="approve-action" onClick={() => resolveApproval(item, true)}><Check size={14} /> Approve</button><button className="reject-action" onClick={() => resolveApproval(item, false)}><X size={14} /> Reject</button><button className="text-action">Review details <ChevronRight size={13} /></button></div></div><time>Submitted today</time></div>; })}</div> : <div className="empty-state"><CheckCircle2 size={30} /><strong>No persisted approvals</strong><span>Nothing is currently waiting for your review.</span></div>}</div><aside className="approval-policy surface-panel"><div className="policy-icon"><ShieldCheck size={22} /></div><span className="section-eyebrow">OPERATOR POLICY</span><h2>Human control stays in the loop.</h2><p>Approval decisions are not claimed as complete until a durable backend state transition and execution result are available.</p><div className="policy-points"><span><CheckCircle2 size={14} /> External sends remain disabled</span><span><CheckCircle2 size={14} /> Kill switch remains respected</span><span><AlertTriangle size={14} /> Lead and outreach audit records are not implemented</span></div></aside></div><div className="surface-panel approval-history-panel"><div className="panel-heading"><div><span className="section-eyebrow">DECISION HISTORY</span><h2>Past decisions</h2></div><span className="section-muted">{approvalHistory.length} recorded</span></div>{approvalHistory.length ? <div className="approval-history-list">{approvalHistory.map(item => <div className="approval-history-row" key={item.id}><div><strong>{item.action}</strong><small>{item.detail}</small></div><span className={item.status === "approved" ? "history-approved" : "history-rejected"}>{item.status.toUpperCase()}</span></div>)}</div> : <div className="empty-state compact"><Clock3 size={20} /><span>No approval decisions recorded yet</span></div>}</div></section>
   );
 
   const saveEnvironment = () => {
