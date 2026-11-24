@@ -3,7 +3,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { invokeLLM } from "./_core/llm";
-import { createActivityEvent, createApprovalRequest, createWorkflowTask, decideApprovalRequest, deleteWorkflowTask, listActivityEvents, listApprovalRequests, listEnvironmentSecrets, listServiceConnections, listWorkflowTasks, revokeServiceConnection, updateUserProfile, updateWorkflowTask, upsertEnvironmentSecret } from "./db";
+import { createActivityEvent, createApprovalRequest, createWorkflowTask, decideApprovalRequest, deleteEnvironmentSecret, deleteWorkflowTask, listActivityEvents, listApprovalRequests, listEnvironmentSecrets, listServiceConnections, listWorkflowTasks, revokeServiceConnection, updateUserProfile, updateWorkflowTask, upsertEnvironmentSecret } from "./db";
 import { createCodeChallenge, createCodeVerifier, createConnectorState, decryptSecret, encryptSecret, getAuthorizationUrl, getConnectorRedirectUri, getProviderPublicStatus, PROVIDERS } from "./connectors";
 import { environmentSecretNames, environmentUpdateMessage, environmentUpdateSchema, maskEnvironmentSecret } from "./environment";
 import { z } from "zod";
@@ -70,6 +70,13 @@ export const appRouter = router({
             return { name, configured: Boolean(record), masked: record ? maskEnvironmentSecret(record.encryptedValue) : null };
           }),
         };
+      }),
+    remove: protectedProcedure
+      .input(z.object({ name: z.enum(environmentSecretNames) }))
+      .mutation(async ({ ctx, input }) => {
+        const result = await deleteEnvironmentSecret(input.name, ctx.user.id);
+        await createActivityEvent({ userId: ctx.user.id, kind: "wait", message: `API Vault credential removed: ${input.name}` });
+        return result;
       }),
   }),
 
