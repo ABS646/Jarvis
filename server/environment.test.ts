@@ -13,10 +13,12 @@ describe("API Vault security contracts", () => {
     expect(masked).not.toContain(plaintext);
   });
 
-  it("accepts only the supported Apify and n8n fields", () => {
-    expect(environmentUpdateSchema.safeParse({ OPENAI_API_KEY: "should-be-rejected" }).success).toBe(false);
+  it("accepts only the supported OpenAI, Apify, and n8n fields", () => {
+    expect(environmentUpdateSchema.safeParse({ OPENAI_API_KEY: "sk-test-secret" }).success).toBe(true);
     expect(environmentUpdateSchema.safeParse({ APIFY_API_TOKEN: "token" }).success).toBe(true);
     expect(environmentUpdateSchema.safeParse({ N8N_WEBHOOK_URL: "https://n8n.example.test/hook" }).success).toBe(true);
+    expect(environmentUpdateSchema.safeParse({ UNKNOWN_PROVIDER_SECRET: "secret" }).success).toBe(false);
+    expect(environmentUpdateSchema.safeParse({}).success).toBe(false);
   });
 
   it("keeps environment records scoped to the authenticated user", () => {
@@ -30,6 +32,6 @@ describe("API Vault security contracts", () => {
   });
 
   it("preserves the exact successful-update activity message", () => {
-    expect(environmentUpdateMessage).toBe("[SYSTEM] Environment variables updated successfully. Core systems online.");
+    expect(environmentUpdateMessage).toBe("[SYSTEM] API Vault values updated.");
   });
 });
