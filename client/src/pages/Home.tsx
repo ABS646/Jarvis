@@ -191,6 +191,7 @@ const connectionRequirements: Record<string, string> = {
   vercel: "Missing VERCEL_CLIENT_ID / SECRET or PUBLIC_APP_URL",
   linkedin: "LinkedIn developer app + approved OAuth scopes required",
   apify: "Save APIFY_API_TOKEN in the API Vault",
+  n8n: "Save N8N_API_KEY and N8N_WEBHOOK_URL in Settings → API Vault",
   openai: "Managed by J.A.R.V.I.S · no separate connection needed",
   video: "Video provider adapters are not configured yet",
 };
@@ -239,6 +240,7 @@ export default function Home() {
       setEnvironmentValues({ OPENAI_API_KEY: "", APIFY_API_TOKEN: "", N8N_API_KEY: "", N8N_WEBHOOK_URL: "" });
       flash("API Vault updated", "The submitted values were encrypted server-side and masked in the dashboard.");
     },
+    onError: error => flash("API Vault update failed", error.message),
   });
   const environmentRemove = trpc.environment.remove.useMutation({ onSuccess: async (_result, variables) => { await environmentQuery.refetch(); await activityQuery.refetch(); flash("Credential removed", `${variables.name} was removed from your API Vault.`); }, onError: error => flash("Credential could not be removed", error.message) });
   const activityQuery = trpc.workflows.activity.list.useQuery();
@@ -542,8 +544,12 @@ export default function Home() {
     const detail = window.prompt("Edit task description", task.detail);
     if (detail === null) return;
     if (!title.trim() || !detail.trim()) { flash("Invalid task", "Title and description cannot be empty."); return; }
-    await workflowTaskUpdate.mutateAsync({ id: Number(task.id), title: title.trim(), detail: detail.trim() });
-    flash("Task updated", "Your changes were saved.");
+    try {
+      await workflowTaskUpdate.mutateAsync({ id: Number(task.id), title: title.trim(), detail: detail.trim() });
+      flash("Task updated", "Your changes were saved.");
+    } catch {
+      // The mutation error handler displays the backend failure.
+    }
   };
 
   const updateTaskStatus = (task: TaskItem, status: "completed" | "cancelled" | "failed") => {
