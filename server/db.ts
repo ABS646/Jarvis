@@ -194,6 +194,24 @@ export async function createWorkflowTask(values: InsertWorkflowTask) {
   return (await db.select().from(workflowTasks).where(eq(workflowTasks.userId, values.userId)).orderBy(desc(workflowTasks.createdAt)).limit(1))[0];
 }
 
+export async function updateWorkflowTask(id: number, userId: number, values: Partial<Pick<InsertWorkflowTask, "title" | "detail" | "status" | "progress" | "approvalRequired" | "error">>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const existing = await db.select().from(workflowTasks).where(and(eq(workflowTasks.id, id), eq(workflowTasks.userId, userId))).limit(1);
+  if (!existing[0]) throw new Error("Task not found");
+  await db.update(workflowTasks).set(values).where(and(eq(workflowTasks.id, id), eq(workflowTasks.userId, userId)));
+  return (await db.select().from(workflowTasks).where(and(eq(workflowTasks.id, id), eq(workflowTasks.userId, userId))).limit(1))[0];
+}
+
+export async function deleteWorkflowTask(id: number, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const existing = await db.select({ id: workflowTasks.id }).from(workflowTasks).where(and(eq(workflowTasks.id, id), eq(workflowTasks.userId, userId))).limit(1);
+  if (!existing[0]) throw new Error("Task not found");
+  await db.delete(workflowTasks).where(and(eq(workflowTasks.id, id), eq(workflowTasks.userId, userId)));
+  return { success: true as const, id };
+}
+
 export async function listApprovalRequests(userId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
