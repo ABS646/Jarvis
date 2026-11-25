@@ -1,104 +1,91 @@
-import { startLogin } from "@/const";
 import { trpc } from "@/lib/trpc";
-import { TRPCClientError } from "@trpc/client";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-type UseAuthOptions = {
-  redirectOnUnauthenticated?: boolean;
-  redirectPath?: string;
-};
+type UseAuthOptions = { redirectOnUnauthenticated?: boolean; redirectPath?: string };
+const TOKEN_KEY = "jarvis-supabase-access-token";
 
-export function useAuth(options?: UseAuthOptions) {
-  // Login is started via startLogin() in the effect below, only when we actually
-  // navigate — never during render. startLogin() mints a one-time nonce + writes
-  // the state cookie, so calling it per render would overwrite the cookie and
-  // desync it from an in-flight login's `state`.
-  const { redirectOnUnauthenticated = false, redirectPath } = options ?? {};
+function config() {
+  return {
+    url: (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.replace(/\/$/, ""),
+    key: import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined,
+  };
+}
+
+export function useAuth(_options?: UseAuthOptions) {
   const utils = trpc.useUtils();
+  const [sessionVersion, setSessionVersion] = useState(0);
+  const meQuery = trpc.auth.me.useQuery(undefined, { retry: false, refetchOnWindowFocus: false });
 
-  const meQuery = trpc.auth.me.useQuery(undefined, {
-    retry: false,
-    refetchOnWindowFocus: false,
-  });
+  // Complete Supabase email-confirmation redirects and persist the returned session.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const accessToken = params.get("access_token");
+    const refreshToken = params.get("refresh_token");
+    if (!accessToken) return;
+    try {
+      localStorage.setItem(TOKEN_KEY, accessToken);
+      if (refreshToken) localStorage.setItem("jarvis-supabase-refresh-token", refreshToken);
+      window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+    } catch {}
+    setSessionVersion(v => v + 1);
+    void utils.auth.me.invalidate();
+    void utils.auth.me.refetch();
+  }, [utils]);
 
-  const logoutMutation = trpc.auth.logout.useMutation({
-    onSuccess: () => {
-      utils.auth.me.setData(undefined, null);
-    },
-  });
+  // Refresh Supabase sessions before their short-lived access token expires.
+  useEffect(() => {
+    const refresh = async () => {
+      const { url, key } = config();
+      if (!url || !key) return;
+      let refreshToken = "";
+      try { refreshToken = localStorage.getItem("jarvis-supabase-refresh-token") ?? ""; } catch {}
+      if (!refreshToken) return;
+      try {
+        const response = await fetch(url + "/auth/v1/token?grant_type=refresh_token", { method: "POST", headers: { "Content-Type": "application/json", apikey: key }, body: JSON.stringify({ refresh_token: refreshToken }) });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data.access_token) {
+          localStorage.setItem(TOKEN_KEY, data.access_token);
+          if (data.refresh_token) localStorage.setItem("jarvis-supabase-refresh-token", data.refresh_token);
+          setSessionVersion(v => v + 1);
+          await utils.auth.me.invalidate();
+        }
+      } catch { /* Keep the current session; the next API request will report expiry if needed. */ }
+    };
+    void refresh();
+    const timer = window.setInterval(() => { void refresh(); }, 45 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, [utils]);
+
+  const authenticate = useCallback(async (mode: "login" | "signup", email: string, password: string) => {
+    const { url, key } = config();
+    if (!url || !key) throw new Error("Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to the Vercel project.");
+    const endpoint = mode === "login" ? "/auth/v1/token?grant_type=password" : "/auth/v1/signup";
+    const response = await fetch(url + endpoint, { method: "POST", headers: { "Content-Type": "application/json", apikey: key }, body: JSON.stringify({ email: email.trim(), password }) });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.msg || data.message || data.error_description || "Authentication failed. Check your details and try again.");
+    if (!data.access_token) return "Account created. Check your email to confirm it, then sign in.";
+    try { localStorage.setItem(TOKEN_KEY, data.access_token); if (data.refresh_token) localStorage.setItem("jarvis-supabase-refresh-token", data.refresh_token); } catch {}
+    setSessionVersion(v => v + 1);
+    await utils.auth.me.invalidate();
+    await utils.auth.me.refetch();
+    return "Signed in successfully.";
+  }, [utils]);
+
+  const signIn = useCallback((email: string, password: string) => authenticate("login", email, password), [authenticate]);
+  const signUp = useCallback((email: string, password: string) => authenticate("signup", email, password), [authenticate]);
 
   const logout = useCallback(async () => {
-    try {
-      await logoutMutation.mutateAsync();
-    } catch (error: unknown) {
-      if (
-        error instanceof TRPCClientError &&
-        error.data?.code === "UNAUTHORIZED"
-      ) {
-        return;
-      }
-      throw error;
-    } finally {
-      // Clear the Preview auto-login token mirrored into sessionStorage, so
-      // header-based sessions (Safari ITP / WebView) are logged out too. The
-      // backend cookie is cleared by the logout mutation.
-      try {
-        sessionStorage.removeItem("manus-cookie");
-      } catch {}
-      utils.auth.me.setData(undefined, null);
-      await utils.auth.me.invalidate();
-    }
-  }, [logoutMutation, utils]);
+    const { url, key } = config();
+    let token = "";
+    try { token = localStorage.getItem(TOKEN_KEY) ?? ""; } catch {}
+    if (url && key && token) { try { await fetch(url + "/auth/v1/logout", { method: "POST", headers: { apikey: key, Authorization: "Bearer " + token } }); } catch {} }
+    try { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem("jarvis-supabase-refresh-token"); } catch {}
+    setSessionVersion(v => v + 1);
+    utils.auth.me.setData(undefined, null);
+    await utils.auth.me.invalidate();
+  }, [utils]);
 
-  const state = useMemo(() => {
-    // Storage can be disabled in private browsing or embedded mobile browsers.
-    // Authentication must still render; persistence is only a convenience.
-    try {
-      window.localStorage.setItem(
-        "manus-runtime-user-info",
-        JSON.stringify(meQuery.data)
-      );
-    } catch {
-      // Continue without local persistence.
-    }
-    return {
-      user: meQuery.data ?? null,
-      loading: meQuery.isLoading || logoutMutation.isPending,
-      error: meQuery.error ?? logoutMutation.error ?? null,
-      isAuthenticated: Boolean(meQuery.data),
-    };
-  }, [
-    meQuery.data,
-    meQuery.error,
-    meQuery.isLoading,
-    logoutMutation.error,
-    logoutMutation.isPending,
-  ]);
-
-  useEffect(() => {
-    if (!redirectOnUnauthenticated) return;
-    if (meQuery.isLoading || logoutMutation.isPending) return;
-    if (state.user) return;
-    if (typeof window === "undefined") return;
-    if (redirectPath && window.location.pathname === redirectPath) return;
-
-    // Navigate at this moment only. startLogin() mints the nonce + cookie itself.
-    if (redirectPath) {
-      window.location.href = redirectPath;
-    } else {
-      startLogin();
-    }
-  }, [
-    redirectOnUnauthenticated,
-    redirectPath,
-    logoutMutation.isPending,
-    meQuery.isLoading,
-    state.user,
-  ]);
-
-  return {
-    ...state,
-    refresh: () => meQuery.refetch(),
-    logout,
-  };
+  const state = useMemo(() => ({ user: meQuery.data ?? null, loading: meQuery.isLoading, error: meQuery.error ?? null, isAuthenticated: Boolean(meQuery.data) }), [meQuery.data, meQuery.error, meQuery.isLoading, sessionVersion]);
+  return { ...state, refresh: () => meQuery.refetch(), logout, signIn, signUp };
 }

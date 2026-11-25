@@ -57,7 +57,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { startLogin } from "@/const";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
@@ -227,6 +226,11 @@ function StatusPill({ children, tone = "online" }: { children: React.ReactNode; 
 export default function Home() {
   const auth = useAuth();
   const [loginError, setLoginError] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+  const [authNotice, setAuthNotice] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
   const assistantChat = trpc.assistant.chat.useMutation();
   const connectorCatalog = trpc.connections.catalog.useQuery();
   const connectorList = trpc.connections.list.useQuery();
@@ -877,7 +881,7 @@ export default function Home() {
   }
 
   if (!auth.isAuthenticated || !auth.user) {
-    return <div className="auth-screen"><div className="auth-card"><div className="auth-orb"><span>J</span></div><div className="eyebrow accent-eyebrow"><span className="eyebrow-line" />SECURE OPERATOR ACCESS</div><h1>J.A.R.V.I.S <em>awaits.</em></h1><p>Sign in with your Manus account to access your private command center, connections, approvals, and profile. Access is restricted to the configured owner account.</p><button className="auth-login-button" onClick={() => { try { setLoginError(""); startLogin(); } catch (error) { setLoginError(error instanceof Error ? error.message : "Unable to start sign-in. Please try again."); } }}><ShieldCheck size={16} /> Sign in to continue <ArrowUpRight size={15} /></button>{loginError && <p className="auth-login-error" role="alert">{loginError}. Check that the J.A.R.V.I.S OAuth environment is configured for this deployment.</p>}<span className="auth-footnote"><LockKeyhole size={13} /> Only the configured owner account can use this dashboard.</span></div></div>;
+    return <div className="auth-screen"><div className="auth-card"><div className="auth-orb"><span>J</span></div><div className="eyebrow accent-eyebrow"><span className="eyebrow-line" />SECURE ACCOUNT ACCESS</div><h1>J.A.R.V.I.S <em>awaits.</em></h1><p>Create an account or sign in to your private command workspace.</p><form onSubmit={async event => { event.preventDefault(); setLoginError(""); setAuthNotice(""); setAuthBusy(true); try { const message = authMode === "login" ? await auth.signIn(authEmail, authPassword) : await auth.signUp(authEmail, authPassword); setAuthNotice(message); } catch (error) { setLoginError(error instanceof Error ? error.message : "Unable to authenticate. Please try again."); } finally { setAuthBusy(false); } }}><label className="profile-field"><span>Email address</span><input type="email" required autoComplete="email" value={authEmail} onChange={event => setAuthEmail(event.target.value)} placeholder="you@example.com" /></label><label className="profile-field"><span>Password</span><input type="password" required minLength={8} autoComplete={authMode === "login" ? "current-password" : "new-password"} value={authPassword} onChange={event => setAuthPassword(event.target.value)} placeholder="At least 8 characters" /></label><button className="auth-login-button" type="submit" disabled={authBusy}>{authBusy ? "Please wait..." : authMode === "login" ? "Sign in to continue" : "Create account"} <ArrowUpRight size={15} /></button></form><button className="text-action" type="button" onClick={() => { setAuthMode(authMode === "login" ? "signup" : "login"); setLoginError(""); setAuthNotice(""); }}>{authMode === "login" ? "New here? Create an account" : "Already registered? Sign in"}</button>{loginError && <p className="auth-login-error" role="alert">{loginError}</p>}{authNotice && <p className="auth-footnote" role="status">{authNotice}</p>}<span className="auth-footnote"><LockKeyhole size={13} /> Your workspace is private. Administrator access is restricted.</span></div></div>;
   }
 
   return (
