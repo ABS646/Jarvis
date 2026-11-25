@@ -142,7 +142,7 @@ export async function queueBackgroundJob(values: InsertBackgroundJob) {
   try {
     await db.insert(backgroundJobs).values(values);
   } catch (error) {
-    const existing = await db.select().from(backgroundJobs).where(eq(backgroundJobs.idempotencyKey, values.idempotencyKey)).limit(1);
+    const existing = await db.select().from(backgroundJobs).where(and(eq(backgroundJobs.idempotencyKey, values.idempotencyKey), eq(backgroundJobs.userId, values.userId))).limit(1);
     if (!existing[0]) throw error;
     return existing[0];
   }
@@ -224,7 +224,7 @@ export async function createApprovalRequest(values: InsertApprovalRequest) {
   try {
     await db.insert(approvalRequests).values(values);
   } catch (error) {
-    const existing = await db.select().from(approvalRequests).where(eq(approvalRequests.idempotencyKey, values.idempotencyKey)).limit(1);
+    const existing = await db.select().from(approvalRequests).where(and(eq(approvalRequests.idempotencyKey, values.idempotencyKey), eq(approvalRequests.userId, values.userId))).limit(1);
     if (!existing[0]) throw error;
     return existing[0];
   }
