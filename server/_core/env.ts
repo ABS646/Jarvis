@@ -1,6 +1,9 @@
 // Platform values are read at use time. See the Webdev service/authentication skills.
 export const ENV = {
   get appId() { return process.env.MANUS_PROJECT_ID ?? ""; },
+  get supabaseUrl() { return (process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? "").replace(/\\/$/, ""); },
+  get supabasePublishableKey() { return process.env.SUPABASE_PUBLISHABLE_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? ""; },
+  get adminEmail() { return process.env.ADMIN_EMAIL ?? "imamudeenmuhammad646@gmail.com"; },
   get cookieSecret() { return process.env.MANUS_JWT_SECRET ?? ""; },
   get databaseUrl() { return process.env.DATABASE_URL ?? ""; },
   get oAuthServerUrl() { return process.env.MANUS_OAUTH_API_URL ?? ""; },
