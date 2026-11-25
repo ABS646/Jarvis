@@ -3,7 +3,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { invokeLLM } from "./_core/llm";
-import { createActivityEvent, createApprovalRequest, createWorkflowTask, decideApprovalRequest, listActivityEvents, listApprovalRequests, listEnvironmentSecrets, listServiceConnections, listWorkflowTasks, revokeServiceConnection, updateUserProfile, upsertEnvironmentSecret } from "./db";
+import { createActivityEvent, createApprovalRequest, createWorkflowTask, decideApprovalRequest, deleteEnvironmentSecret, deleteWorkflowTask, listActivityEvents, listApprovalRequests, listEnvironmentSecrets, listServiceConnections, listWorkflowTasks, revokeServiceConnection, updateUserProfile, updateWorkflowTask, upsertEnvironmentSecret } from "./db";
 import { createCodeChallenge, createCodeVerifier, createConnectorState, decryptSecret, encryptSecret, getAuthorizationUrl, getConnectorRedirectUri, getProviderPublicStatus, PROVIDERS } from "./connectors";
 import { environmentSecretNames, environmentUpdateMessage, environmentUpdateSchema, maskEnvironmentSecret } from "./environment";
 import { z } from "zod";
@@ -71,6 +71,13 @@ export const appRouter = router({
           }),
         };
       }),
+    remove: protectedProcedure
+      .input(z.object({ name: z.enum(environmentSecretNames) }))
+      .mutation(async ({ ctx, input }) => {
+        const result = await deleteEnvironmentSecret(input.name, ctx.user.id);
+        await createActivityEvent({ userId: ctx.user.id, kind: "wait", message: `API Vault credential removed: ${input.name}` });
+        return result;
+      }),
   }),
 
   assistant: router({
@@ -112,6 +119,15 @@ export const appRouter = router({
       create: protectedProcedure
         .input(z.object({ title: z.string().trim().min(1).max(191), detail: z.string().trim().min(1).max(12000), approvalRequired: z.boolean().default(true) }))
         .mutation(({ ctx, input }) => createWorkflowTask({ userId: ctx.user.id, title: input.title, detail: input.detail, approvalRequired: input.approvalRequired ? 1 : 0 })),
+      update: protectedProcedure
+        .input(z.object({ id: z.number().int().positive(), title: z.string().trim().min(1).max(191).optional(), detail: z.string().trim().min(1).max(12000).optional(), status: z.enum(["pending", "running", "completed", "failed", "cancelled"]).optional(), progress: z.number().int().min(0).max(100).optional(), approvalRequired: z.boolean().optional(), error: z.string().max(12000).nullable().optional() }).refine(input => Object.keys(input).some(key => key !== "id"), "At least one task field must be updated"))
+        .mutation(({ ctx, input }) => {
+          const { id, approvalRequired, ...fields } = input;
+          return updateWorkflowTask(id, ctx.user.id, { ...fields, ...(approvalRequired === undefined ? {} : { approvalRequired: approvalRequired ? 1 : 0 }) });
+        }),
+      delete: protectedProcedure
+        .input(z.object({ id: z.number().int().positive() }))
+        .mutation(({ ctx, input }) => deleteWorkflowTask(input.id, ctx.user.id)),
     }),
     approvals: router({
       list: protectedProcedure.query(({ ctx }) => listApprovalRequests(ctx.user.id)),

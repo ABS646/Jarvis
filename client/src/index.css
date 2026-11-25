@@ -305,3 +305,54 @@ kbd { padding: 2px 5px; border: 1px solid rgba(119, 177, 207, .24); border-botto
 .vault-status-list span { overflow: hidden; color: #7899a8; font: 8px 'IBM Plex Mono', monospace; text-overflow: ellipsis; white-space: nowrap; }
 .vault-status-list strong { overflow: hidden; color: #91e7b5; font: 9px 'IBM Plex Mono', monospace; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 620px) { .vault-card { padding: 16px; } .vault-card > p { margin-top: 14px; } .vault-actions { align-items: stretch; flex-direction: column; } .vault-actions .primary-action { width: 100%; } .vault-actions > span { text-align: center; } .vault-status-list > div { align-items: flex-start; flex-direction: column; gap: 5px; } .vault-status-list strong { max-width: 100%; } }
+
+
+/* Repair branch: accessible layouts for newly wired task and approval controls. */
+.task-create-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+}
+.task-create-row input {
+  flex: 1 1 220px;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 12px;
+  color: inherit;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 9px;
+}
+.task-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.approval-history-panel { margin-top: 18px; }
+.approval-history-list { display: grid; }
+.approval-history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 18px;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+.approval-history-row > div { display: grid; gap: 4px; min-width: 0; }
+.approval-history-row small { color: var(--muted-foreground, #94a3b8); }
+.history-approved, .history-rejected {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+}
+.history-approved { color: #34d399; }
+.history-rejected { color: #f87171; }
+@media (max-width: 700px) {
+  .task-row-actions { justify-content: flex-start; }
+  .approval-history-row { align-items: flex-start; }
+}

@@ -17,10 +17,6 @@ const requireUser = t.middleware(async opts => {
   if (!ctx.user) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
   }
-  if (!ENV.ownerOpenId || ctx.user.openId !== ENV.ownerOpenId) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "This private J.A.R.V.I.S instance is restricted to its configured owner." });
-  }
-
   return next({
     ctx: {
       ...ctx,
@@ -35,7 +31,7 @@ export const adminProcedure = t.procedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;
 
-    if (!ctx.user || ctx.user.role !== 'admin' || !ENV.ownerOpenId || ctx.user.openId !== ENV.ownerOpenId) {
+    if (!ctx.user || ctx.user.role !== 'admin' || !ENV.adminEmail || ctx.user.email?.toLowerCase() !== ENV.adminEmail.toLowerCase()) {
       throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
     }
 

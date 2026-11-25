@@ -142,7 +142,7 @@ export async function queueBackgroundJob(values: InsertBackgroundJob) {
   try {
     await db.insert(backgroundJobs).values(values);
   } catch (error) {
-    const existing = await db.select().from(backgroundJobs).where(eq(backgroundJobs.idempotencyKey, values.idempotencyKey)).limit(1);
+    const existing = await db.select().from(backgroundJobs).where(and(eq(backgroundJobs.idempotencyKey, values.idempotencyKey), eq(backgroundJobs.userId, values.userId))).limit(1);
     if (!existing[0]) throw error;
     return existing[0];
   }
@@ -194,6 +194,24 @@ export async function createWorkflowTask(values: InsertWorkflowTask) {
   return (await db.select().from(workflowTasks).where(eq(workflowTasks.userId, values.userId)).orderBy(desc(workflowTasks.createdAt)).limit(1))[0];
 }
 
+export async function updateWorkflowTask(id: number, userId: number, values: Partial<Pick<InsertWorkflowTask, "title" | "detail" | "status" | "progress" | "approvalRequired" | "error">>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const existing = await db.select().from(workflowTasks).where(and(eq(workflowTasks.id, id), eq(workflowTasks.userId, userId))).limit(1);
+  if (!existing[0]) throw new Error("Task not found");
+  await db.update(workflowTasks).set(values).where(and(eq(workflowTasks.id, id), eq(workflowTasks.userId, userId)));
+  return (await db.select().from(workflowTasks).where(and(eq(workflowTasks.id, id), eq(workflowTasks.userId, userId))).limit(1))[0];
+}
+
+export async function deleteWorkflowTask(id: number, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const existing = await db.select({ id: workflowTasks.id }).from(workflowTasks).where(and(eq(workflowTasks.id, id), eq(workflowTasks.userId, userId))).limit(1);
+  if (!existing[0]) throw new Error("Task not found");
+  await db.delete(workflowTasks).where(and(eq(workflowTasks.id, id), eq(workflowTasks.userId, userId)));
+  return { success: true as const, id };
+}
+
 export async function listApprovalRequests(userId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
@@ -206,7 +224,7 @@ export async function createApprovalRequest(values: InsertApprovalRequest) {
   try {
     await db.insert(approvalRequests).values(values);
   } catch (error) {
-    const existing = await db.select().from(approvalRequests).where(eq(approvalRequests.idempotencyKey, values.idempotencyKey)).limit(1);
+    const existing = await db.select().from(approvalRequests).where(and(eq(approvalRequests.idempotencyKey, values.idempotencyKey), eq(approvalRequests.userId, values.userId))).limit(1);
     if (!existing[0]) throw error;
     return existing[0];
   }
@@ -227,6 +245,15 @@ export async function listEnvironmentSecrets(userId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
   return db.select().from(environmentSecrets).where(eq(environmentSecrets.userId, userId)).orderBy(asc(environmentSecrets.name));
+}
+
+export async function deleteEnvironmentSecret(name: string, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const existing = await db.select({ id: environmentSecrets.id }).from(environmentSecrets).where(and(eq(environmentSecrets.userId, userId), eq(environmentSecrets.name, name))).limit(1);
+  if (!existing[0]) return { success: true as const, deleted: false as const };
+  await db.delete(environmentSecrets).where(and(eq(environmentSecrets.id, existing[0].id), eq(environmentSecrets.userId, userId)));
+  return { success: true as const, deleted: true as const };
 }
 
 export async function upsertEnvironmentSecret(values: InsertEnvironmentSecret) {

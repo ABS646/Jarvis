@@ -256,7 +256,32 @@ class SDKServer {
     } as GetUserInfoWithJwtResponse;
   }
 
+  private async authenticateSupabaseToken(token: string): Promise<AuthenticatedUser | null> {
+    if (!ENV.supabaseUrl || !ENV.supabasePublishableKey) return null;
+    try {
+      const response = await fetch(ENV.supabaseUrl + "/auth/v1/user", {
+        headers: { apikey: ENV.supabasePublishableKey, Authorization: "Bearer " + token },
+      });
+      if (!response.ok) return null;
+      const identity = await response.json() as { id?: string; email?: string; user_metadata?: { full_name?: string; name?: string } };
+      if (!isNonEmptyString(identity.id) || !isNonEmptyString(identity.email)) return null;
+      const email = identity.email.trim().toLowerCase();
+      const role = ENV.adminEmail && email === ENV.adminEmail.toLowerCase() ? "admin" : "user";
+      await db.upsertUser({ openId: identity.id, email, name: identity.user_metadata?.full_name ?? identity.user_metadata?.name ?? email.split("@")[0], loginMethod: "supabase", role, lastSignedIn: new Date() });
+      return (await db.getUserByOpenId(identity.id)) ?? null;
+    } catch (error) {
+      console.warn("[Auth] Supabase token verification failed", error instanceof Error ? error.message : "unknown error");
+      return null;
+    }
+  }
   async authenticateRequest(req: Request): Promise<AuthenticatedUser> {
+    // Validate Supabase access tokens against the Auth user endpoint. This supports
+    // both legacy HS256 and asymmetric JWT signing configurations.
+    const authorization = req.headers.authorization;
+    if (typeof authorization === "string" && authorization.startsWith("Bearer ")) {
+      const supabaseUser = await this.authenticateSupabaseToken(authorization.slice(7));
+      if (supabaseUser) return supabaseUser;
+    }
     // 1. Prefer the session cookie (regular OAuth login).
     const cookies = this.parseCookies(req.headers.cookie);
     let sessionToken = cookies.get(COOKIE_NAME);
