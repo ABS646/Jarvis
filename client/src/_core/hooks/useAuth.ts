@@ -1,5 +1,5 @@
 import { trpc } from "@/lib/trpc";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type UseAuthOptions = { redirectOnUnauthenticated?: boolean; redirectPath?: string };
 const TOKEN_KEY = "jarvis-supabase-access-token";
@@ -15,6 +15,31 @@ export function useAuth(_options?: UseAuthOptions) {
   const utils = trpc.useUtils();
   const [sessionVersion, setSessionVersion] = useState(0);
   const meQuery = trpc.auth.me.useQuery(undefined, { retry: false, refetchOnWindowFocus: false });
+
+  // Refresh Supabase sessions before their short-lived access token expires.
+  useEffect(() => {
+    const refresh = async () => {
+      const { url, key } = config();
+      if (!url || !key) return;
+      let refreshToken = "";
+      try { refreshToken = localStorage.getItem("jarvis-supabase-refresh-token") ?? ""; } catch {}
+      if (!refreshToken) return;
+      try {
+        const response = await fetch(url + "/auth/v1/token?grant_type=refresh_token", { method: "POST", headers: { "Content-Type": "application/json", apikey: key }, body: JSON.stringify({ refresh_token: refreshToken }) });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data.access_token) {
+          localStorage.setItem(TOKEN_KEY, data.access_token);
+          if (data.refresh_token) localStorage.setItem("jarvis-supabase-refresh-token", data.refresh_token);
+          setSessionVersion(v => v + 1);
+          await utils.auth.me.invalidate();
+        }
+      } catch { /* Keep the current session; the next API request will report expiry if needed. */ }
+    };
+    void refresh();
+    const timer = window.setInterval(() => { void refresh(); }, 45 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, [utils]);
 
   const authenticate = useCallback(async (mode: "login" | "signup", email: string, password: string) => {
     const { url, key } = config();
