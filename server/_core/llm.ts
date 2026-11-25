@@ -216,10 +216,17 @@ const platformApiBase = () => {
   if (!ENV.forgeApiUrl.trim()) throw new Error("MANUS_API_URL is not configured");
   return ENV.forgeApiUrl.replace(/\/$/, "");
 };
-const resolveApiUrl = () => `${platformApiBase()}/v1/chat/completions`;
+const hasManusProvider = () => Boolean(ENV.forgeApiUrl.trim() && ENV.forgeApiKey);
+const hasOpenAiProvider = () => Boolean(ENV.openAiApiKey);
+const resolveApiUrl = () => hasManusProvider()
+  ? `${platformApiBase()}/v1/chat/completions`
+  : `${ENV.openAiBaseUrl}/chat/completions`;
 
 const assertApiKey = () => {
-  if (!ENV.forgeApiKey) {
+  if (!hasManusProvider() && !hasOpenAiProvider()) {
+    if (!ENV.forgeApiUrl.trim()) {
+      throw new Error("No LLM provider is configured. Set MANUS_API_URL and MANUS_API_KEY, or set OPENAI_API_KEY.");
+    }
     throw new Error("MANUS_API_KEY is not configured");
   }
 };
@@ -363,6 +370,10 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     messages: messages.map(normalizeMessage),
   };
 
+  if (!hasManusProvider()) {
+    payload.model = model ?? ENV.openAiModel;
+  }
+
   if (model) {
     payload.model = model;
   }
@@ -406,7 +417,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      authorization: `Bearer ${ENV.forgeApiKey}`,
+      authorization: `Bearer ${hasManusProvider() ? ENV.forgeApiKey : ENV.openAiApiKey}`,
     },
     body: JSON.stringify(payload),
   });
