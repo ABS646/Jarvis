@@ -226,13 +226,7 @@ function StatusPill({ children, tone = "online" }: { children: React.ReactNode; 
 export default function Home() {
   const auth = useAuth();
   // Temporary guest preview: expose the workspace shell without granting backend privileges.
-  const operator = operator ?? { name: "Guest Operator", email: "Guest preview", role: "operator", openId: "guest-preview", loginMethod: "Guest preview" };
-  const [loginError, setLoginError] = useState("");
-  const [authEmail, setAuthEmail] = useState("");
-  const [authPassword, setAuthPassword] = useState("");
-  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
-  const [authNotice, setAuthNotice] = useState("");
-  const [authBusy, setAuthBusy] = useState(false);
+  const operator = auth.user ?? { name: "Guest Operator", email: "Guest preview", role: "operator", openId: "guest-preview", loginMethod: "Guest preview" };
   const assistantChat = trpc.assistant.chat.useMutation();
   const connectorCatalog = trpc.connections.catalog.useQuery();
   const connectorList = trpc.connections.list.useQuery();
