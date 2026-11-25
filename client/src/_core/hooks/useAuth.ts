@@ -16,6 +16,22 @@ export function useAuth(_options?: UseAuthOptions) {
   const [sessionVersion, setSessionVersion] = useState(0);
   const meQuery = trpc.auth.me.useQuery(undefined, { retry: false, refetchOnWindowFocus: false });
 
+  // Complete Supabase email-confirmation redirects and persist the returned session.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const accessToken = params.get("access_token");
+    const refreshToken = params.get("refresh_token");
+    if (!accessToken) return;
+    try {
+      localStorage.setItem(TOKEN_KEY, accessToken);
+      if (refreshToken) localStorage.setItem("jarvis-supabase-refresh-token", refreshToken);
+      window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+    } catch {}
+    setSessionVersion(v => v + 1);
+    void utils.auth.me.invalidate();
+    void utils.auth.me.refetch();
+  }, [utils]);
+
   // Refresh Supabase sessions before their short-lived access token expires.
   useEffect(() => {
     const refresh = async () => {
