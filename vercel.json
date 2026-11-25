@@ -3,17 +3,12 @@
   "outputDirectory": "dist/public",
   "functions": {
     "api/index.ts": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "includeFiles": "dist/app.js"
     }
   },
   "rewrites": [
-    {
-      "source": "/api/:path*",
-      "destination": "/api/index.ts"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
+    { "source": "/api/:path*", "destination": "/api/index.ts" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
