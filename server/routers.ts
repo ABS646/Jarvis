@@ -3,7 +3,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { invokeLLM } from "./_core/llm";
-import { createActivityEvent, createApprovalRequest, createWorkflowTask, decideApprovalRequest, deleteEnvironmentSecret, deleteWorkflowTask, listActivityEvents, listApprovalRequests, listEnvironmentSecrets, listServiceConnections, listWorkflowTasks, revokeServiceConnection, updateUserProfile, updateWorkflowTask, upsertEnvironmentSecret } from "./db";
+import { createActivityEvent, createApprovalRequest, createWorkflowTask, decideApprovalRequest, deleteEnvironmentSecret, deleteWorkflowTask, listActivityEvents, listApprovalRequests, listEnvironmentSecrets, listServiceConnections, listWorkflowTasks, queueBackgroundJob, revokeServiceConnection, updateUserProfile, updateWorkflowTask, upsertEnvironmentSecret } from "./db";
 import { createCodeChallenge, createCodeVerifier, createConnectorState, decryptSecret, encryptSecret, getAuthorizationUrl, getConnectorRedirectUri, getProviderPublicStatus, PROVIDERS } from "./connectors";
 import { environmentSecretNames, environmentUpdateMessage, environmentUpdateSchema, maskEnvironmentSecret } from "./environment";
 import { z } from "zod";
@@ -138,8 +138,21 @@ export const appRouter = router({
         .input(z.object({ id: z.number().int().positive(), status: z.enum(["approved", "rejected"]) }))
         .mutation(async ({ ctx, input }) => {
           const result = await decideApprovalRequest(input.id, ctx.user.id, input.status);
+          if (input.status === "approved" && result.tag === "n8n") {
+            const request = JSON.parse(result.detail) as { payload: Record<string, unknown> };
+            await queueBackgroundJob({ userId: ctx.user.id, kind: "n8n_webhook", status: "queued", payload: JSON.stringify({ workflowPayload: request.payload }), idempotencyKey: result.idempotencyKey, runAfter: new Date(), attempts: 0 });
+          }
           await createActivityEvent({ userId: ctx.user.id, kind: input.status === "approved" ? "success" : "wait", message: `Approval ${input.status}: ${result.action}`, metadata: JSON.stringify({ approvalId: result.id, executionStatus: result.executionStatus }) });
           return result;
+        }),
+    }),
+    n8n: router({
+      submit: protectedProcedure
+        .input(z.object({ workflow: z.string().trim().min(1).max(120), payload: z.record(z.string(), z.unknown()).refine(value => JSON.stringify(value).length <= 10000, "Workflow payload is too large"), idempotencyKey: z.string().trim().min(8).max(191) }))
+        .mutation(async ({ ctx, input }) => {
+          const request = await createApprovalRequest({ userId: ctx.user.id, action: `Run n8n workflow: ${input.workflow}`, detail: JSON.stringify({ workflow: input.workflow, payload: input.payload }), tag: "n8n", risk: "review", idempotencyKey: input.idempotencyKey });
+          await createActivityEvent({ userId: ctx.user.id, kind: "wait", message: `n8n workflow awaiting approval: ${input.workflow}`, metadata: JSON.stringify({ approvalId: request.id, idempotencyKey: input.idempotencyKey }) });
+          return { approvalId: request.id, status: request.status, idempotencyKey: request.idempotencyKey };
         }),
     }),
   }),

@@ -162,10 +162,22 @@ export async function claimNextBackgroundJob() {
   return undefined;
 }
 
-export async function finishBackgroundJob(id: number, status: "succeeded" | "failed", lastError?: string) {
+export async function getBackgroundJobByIdempotencyKey(idempotencyKey: string) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
-  await db.update(backgroundJobs).set({ status, lastError: lastError ?? null }).where(eq(backgroundJobs.id, id));
+  return (await db.select().from(backgroundJobs).where(eq(backgroundJobs.idempotencyKey, idempotencyKey)).limit(1))[0];
+}
+
+export async function markBackgroundJobWaiting(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  await db.update(backgroundJobs).set({ status: "waiting_callback", lockedAt: null }).where(eq(backgroundJobs.id, id));
+}
+
+export async function finishBackgroundJob(id: number, status: "succeeded" | "failed", lastError?: string, resultPayload?: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  await db.update(backgroundJobs).set({ status, lastError: lastError ?? null, resultPayload: resultPayload ?? null, lockedAt: null }).where(eq(backgroundJobs.id, id));
 }
 
 export async function listActivityEvents(userId: number, limit = 50) {
@@ -245,6 +257,12 @@ export async function listEnvironmentSecrets(userId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
   return db.select().from(environmentSecrets).where(eq(environmentSecrets.userId, userId)).orderBy(asc(environmentSecrets.name));
+}
+
+export async function getEnvironmentSecret(name: string, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  return (await db.select().from(environmentSecrets).where(and(eq(environmentSecrets.userId, userId), eq(environmentSecrets.name, name))).limit(1))[0];
 }
 
 export async function deleteEnvironmentSecret(name: string, userId: number) {

@@ -56,6 +56,7 @@ export const backgroundJobs = mysqlTable("background_jobs", {
   attempts: int("attempts").notNull().default(0),
   lockedAt: timestamp("lockedAt"),
   lastError: text("lastError"),
+  resultPayload: text("resultPayload"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

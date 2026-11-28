@@ -7,6 +7,8 @@ import { createContext } from "./_core/context";
 import { sdk } from "./_core/sdk";
 import { processNextBackgroundJob } from "./worker";
 import { serveStatic } from "./_core/static";
+import { finishBackgroundJob, getBackgroundJobByIdempotencyKey } from "./db";
+import { verifyN8nSignature, type N8nCallbackBody } from "./n8n";
 
 type AppOptions = {
   serveFrontend?: boolean;
@@ -32,6 +34,31 @@ export function createApp(options: AppOptions = {}): Express {
     } catch (error) {
       console.error("[Worker] Scheduled run failed", error instanceof Error ? error.message : "unknown error");
       res.status(500).json({ error: "scheduled worker failed" });
+    }
+  });
+
+  app.post("/api/webhooks/n8n", async (req, res) => {
+    try {
+      const body = req.body as N8nCallbackBody;
+      const serialized = JSON.stringify(body);
+      if (!verifyN8nSignature(serialized, req.header("X-JARVIS-Signature"))) {
+        res.status(401).json({ error: "invalid webhook signature" });
+        return;
+      }
+      if (!body?.idempotencyKey || !["succeeded", "failed"].includes(body.status)) {
+        res.status(400).json({ error: "invalid callback payload" });
+        return;
+      }
+      const job = await getBackgroundJobByIdempotencyKey(body.idempotencyKey);
+      if (!job) {
+        res.status(404).json({ error: "background job not found" });
+        return;
+      }
+      await finishBackgroundJob(job.id, body.status, body.error, body.result === undefined ? undefined : JSON.stringify(body.result));
+      res.status(200).json({ ok: true });
+    } catch (error) {
+      console.error("[n8n] Callback failed", error instanceof Error ? error.message : "unknown error");
+      res.status(500).json({ error: "callback processing failed" });
     }
   });
 

@@ -16,6 +16,7 @@ export const ENV = {
   get openAiBaseUrl() { return (process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1").replace(/\/$/, ""); },
   get openAiModel() { return process.env.OPENAI_MODEL ?? "gpt-4o-mini"; },
   get publicAppUrl() { return process.env.PUBLIC_APP_URL ?? ""; },
+  get n8nWebhookSecret() { return process.env.N8N_WEBHOOK_SECRET ?? ""; },
   get connectorEncryptionKey() { return process.env.CONNECTOR_ENCRYPTION_KEY ?? ""; },
   get githubClientId() { return process.env.GITHUB_CLIENT_ID ?? ""; },
   get githubClientSecret() { return process.env.GITHUB_CLIENT_SECRET ?? ""; },

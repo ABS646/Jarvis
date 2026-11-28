@@ -50,6 +50,8 @@ The Settings → API Vault accepts per-user credentials for:
 
 Values are encrypted with AES-256-GCM before they are stored in the database. The API returns only masked values. Set `CONNECTOR_ENCRYPTION_KEY` as a strong, private deployment secret before saving credentials; if it is missing, writes fail closed. Never commit API keys or encryption keys to this repository.
 
-**Adapter status:** OpenAI credentials can currently be stored and removed, but the assistant still uses the application-managed model runtime. Apify and n8n credentials are stored, but their actor/workflow execution adapters are not yet implemented. Saving a key does not mean the provider is connected or operational.
+For the approval-gated n8n bridge, also set `N8N_WEBHOOK_SECRET` and `PUBLIC_APP_URL` as private server-side deployment variables. Jarvis queues the workflow only after approval, sends it from the scheduled worker with an HMAC signature, and accepts completion only from `/api/webhooks/n8n` with a valid signature. The n8n workflow should POST `{ idempotencyKey, status: "succeeded" | "failed", result?, error? }` to the supplied callback URL and sign the exact JSON body with the same secret using HMAC-SHA256 hex.
+
+**Adapter status:** OpenAI credentials can currently be stored and removed, but the assistant still uses the application-managed model runtime. Apify actor execution is not yet implemented. The n8n bridge is implemented as an approval-gated, asynchronous webhook adapter; saving a URL or secret alone does not mean a workflow has completed.
 
 GitHub and Vercel OAuth application credentials are separate server-side deployment secrets: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `VERCEL_CLIENT_ID`, `VERCEL_CLIENT_SECRET`, and `PUBLIC_APP_URL`. Only providers with a complete implemented OAuth and identity flow are reported as configured.
